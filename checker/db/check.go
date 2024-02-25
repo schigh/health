@@ -61,7 +61,7 @@ func (c *Checker) Check(ctx context.Context) *healthpb.Check {
 			Healthy: false,
 			Error: &structpb.Struct{
 				Fields: map[string]*structpb.Value{
-					"origin": structpb.NewStringValue("github.com/ntwrk1/health/checkers/db.Checker.Check"),
+					"origin": structpb.NewStringValue("github.com/schigh/health/checker/db.Checker.Check"),
 					"text":   structpb.NewStringValue("invalid context"),
 				},
 			},
@@ -78,7 +78,7 @@ func (c *Checker) Check(ctx context.Context) *healthpb.Check {
 		out.Healthy = false
 		out.Error = &structpb.Struct{
 			Fields: map[string]*structpb.Value{
-				"origin": structpb.NewStringValue("github.com/ntwrk1/health/checkers/db.Checker.Check"),
+				"origin": structpb.NewStringValue("github.com/schigh/health/checker/db.Checker.Check"),
 				"text":   structpb.NewStringValue("invalid context"),
 			},
 		}
@@ -94,7 +94,7 @@ func (c *Checker) Check(ctx context.Context) *healthpb.Check {
 		out.Healthy = false
 		out.Error = &structpb.Struct{
 			Fields: map[string]*structpb.Value{
-				"origin": structpb.NewStringValue("github.com/ntwrk1/health/checkers/db.Checker.Check"),
+				"origin": structpb.NewStringValue("github.com/schigh/health/checker/db.Checker.Check"),
 				"text":   structpb.NewStringValue(err.Error()),
 			},
 		}
