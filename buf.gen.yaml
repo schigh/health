@@ -1,0 +1,6 @@
+---
+version: v1
+plugins:
+  - name: go
+    out: proto/genpb
+    opt: paths=source_relative

@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package schigh.health.v1;
+
+option go_package = "github.com/schigh/health/v1";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+
+message Check {
+  string name = 1;
+  bool healthy = 2;
+  bool affects_readiness = 3;
+  bool affects_liveness = 4;
+  google.protobuf.Struct error = 5;
+  google.protobuf.Timestamp error_since = 6;
+}

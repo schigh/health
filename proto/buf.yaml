@@ -1,0 +1,10 @@
+---
+version: v1
+name: buf.build/schigh/health
+lint:
+  use:
+    - DEFAULT
+  rpc_allow_google_protobuf_empty_responses: true
+breaking:
+  use:
+    - FILE

@@ -1,0 +1,68 @@
+run:
+  go: "1.20"
+  timeout: 300s
+  skip-dirs:
+    - _test
+    - _helpers
+    - bin
+    - tools
+
+linters:
+  enable:
+    - asciicheck
+    - bidichk
+    - bodyclose
+    - dogsled
+    - durationcheck
+    - errorlint
+    - exhaustive
+    - exportloopref
+    - forbidigo
+    - gochecknoglobals
+    - gochecknoinits
+    - goconst
+    - gocritic
+    - gocyclo
+    - godot
+    - gofmt
+    - gofumpt
+    - goheader
+    - gomoddirectives
+    - gomodguard
+    - goprintffuncname
+    - gosec
+    - govet
+    - importas
+    - makezero
+    - misspell
+    - nakedret
+    - nestif
+    - nilerr
+    - noctx
+    - nolintlint
+    - prealloc
+    - predeclared
+    - promlinter
+    - revive
+    - stylecheck
+    - tagliatelle
+    - tenv
+    - tparallel
+    - unconvert
+    - unparam
+    - whitespace
+  disable:
+    - cyclop
+    - depguard
+    - exhaustivestruct
+    - funlen
+    - gocognit
+    - godox
+    - goerr113
+    - interfacer
+    - lll
+    - nlreturn
+    - paralleltest
+    - testpackage
+    - wrapcheck
+    - wsl
