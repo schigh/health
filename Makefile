@@ -35,13 +35,6 @@ fmt: $(GOFUMPT) ## format you some go code
   		$(GOIMPORTS) -w -local github.com/schigh/health $(CURDIR) ; \
   	}
 
-# see https://github.com/princjef/gomarkdoc
-.PHONY: docs
-docs: $(GOMARKDOC) ## build docs
-	@{ \
-  		$(GOMARKDOC) -v --repository.default-branch main --repository.url 'https://github.com/schigh/health' --output '{{.Dir}}/README.md' -e ./... ; \
-  	}
-
 .PHONY: buf
 buf: $(BUF) ## generate proto artifacts with buf
 	@{\
@@ -59,9 +52,6 @@ ready: ## generate all artifacts, clean, format, and vet code...get ready for a 
 	@{\
 		printf "${_GREEN}%-32s${_NC} " "generating proto" && \
   		$(MAKE) buf ; \
-  		printf " ✅  \n" && \
-		printf "${_GREEN}%-32s${_NC} " "generating docs" && \
-  		$(MAKE) docs ; \
   		printf " ✅  \n" && \
   		printf "${_GREEN}%-32s${_NC} " "formatting" && \
   		$(MAKE) fmt && \

@@ -6,7 +6,6 @@ package tools
 import (
 	_ "github.com/bufbuild/buf/cmd/buf"
 	_ "github.com/golangci/golangci-lint/cmd/golangci-lint"
-	_ "github.com/princjef/gomarkdoc/cmd/gomarkdoc"
 	_ "github.com/schigh/carto"
 	_ "go.uber.org/mock/mockgen"
 	_ "golang.org/x/tools/cmd/stringer"
