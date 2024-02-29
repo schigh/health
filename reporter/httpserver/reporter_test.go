@@ -34,7 +34,6 @@ func TestReporter(t *testing.T) {
 		Port:           8181,
 		LivenessRoute:  "/live",
 		ReadinessRoute: "/ready",
-		CBRoute:        "/cb",
 	})
 
 	// context to close test

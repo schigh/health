@@ -69,12 +69,6 @@ type Reporter interface {
 
 	// UpdateHealthChecks is called from the manager to update the reported health checks. Only new health check invocations
 	UpdateHealthChecks(context.Context, map[string]*healthpb.Check)
-
-	// UpdateCircuitBreakers is called from the manager to update the reported
-	// circuit breaker state. Only circuit breakers reporting a state change are
-	// communicated via this function, so the reporters must manage that delta
-	// internally.
-	UpdateCircuitBreakers(context.Context, map[string]*healthpb.CircuitBreaker)
 }
 
 // Checker performs an individual health check and returns the result

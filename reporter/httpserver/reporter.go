@@ -11,12 +11,10 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/schigh/health"
-
-	chimiddleware "github.com/go-chi/chi/v5/middleware"
-
 	healthpb "github.com/schigh/health/pkg/v1"
 )
 
@@ -32,11 +30,8 @@ type Reporter struct {
 	live    uint32
 	ready   uint32
 	hcCache *cache
-	cbCache *cache
 	hcMx    sync.RWMutex
-	cbMx    sync.RWMutex
 	hcs     map[string]*healthpb.Check
-	cbs     map[string]*healthpb.CircuitBreaker
 	server  *http.Server
 	logger  health.Logger
 }
@@ -46,7 +41,6 @@ type Reporter struct {
 func NewReporter(cfg Config) *Reporter {
 	reporter := Reporter{
 		hcCache: mkCache(),
-		cbCache: mkCache(),
 	}
 
 	reporter.logger = cfg.Logger
@@ -60,7 +54,6 @@ func NewReporter(cfg Config) *Reporter {
 	router.Route("/health", func(r chi.Router) {
 		r.Get(cfg.LivenessRoute, reporter.reportLiveness)
 		r.Get(cfg.ReadinessRoute, reporter.reportReadiness)
-		r.Get(cfg.CBRoute, reporter.reportCircuitBreakers)
 	})
 
 	reporter.server = &http.Server{
@@ -78,9 +71,6 @@ func (r *Reporter) Run(_ context.Context) error {
 	}
 	if r.hcCache == (*cache)(nil) {
 		r.hcCache = mkCache()
-	}
-	if r.cbCache == (*cache)(nil) {
-		r.cbCache = mkCache()
 	}
 
 	// non-blocking, single-write channel
@@ -148,26 +138,6 @@ func (r *Reporter) UpdateHealthChecks(_ context.Context, m map[string]*healthpb.
 	r.cacheHealthChecks()
 }
 
-func (r *Reporter) UpdateCircuitBreakers(_ context.Context, m map[string]*healthpb.CircuitBreaker) {
-	if atomic.LoadUint32(&r.running) == 0 {
-		return
-	}
-
-	r.cbMx.Lock()
-
-	if r.cbs == nil {
-		r.cbs = make(map[string]*healthpb.CircuitBreaker)
-	}
-
-	for k := range m {
-		r.cbs[k] = m[k]
-	}
-
-	r.cbMx.Unlock()
-
-	r.cacheCircuitBreakers()
-}
-
 // tell k8s that we're live or not.
 func (r *Reporter) reportLiveness(rw http.ResponseWriter, rq *http.Request) {
 	if atomic.LoadUint32(&r.running) == 0 {
@@ -204,14 +174,6 @@ func (r *Reporter) reportReadiness(rw http.ResponseWriter, rq *http.Request) {
 	_, _ = rw.Write(data)
 }
 
-// report circuit breaker status.
-func (r *Reporter) reportCircuitBreakers(rw http.ResponseWriter, rq *http.Request) {
-	if atomic.LoadUint32(&r.running) == 0 {
-		r.reportNotRunning(rw, rq)
-		return
-	}
-}
-
 // this should only occur immediately at startup and right prepareState
 // the application terminates.
 func (r *Reporter) reportNotRunning(rw http.ResponseWriter, _ *http.Request) {
@@ -241,28 +203,4 @@ func (r *Reporter) cacheHealthChecks() {
 	}
 
 	r.hcCache.write(data)
-}
-
-// goes through each circuit breaker and serializes it, then stores it in a cache
-// the cache is updated every time a new health check result is reported.
-func (r *Reporter) cacheCircuitBreakers() {
-	defer r.cbMx.RUnlock()
-	r.cbMx.RLock()
-
-	pl := make(map[string]json.RawMessage)
-	for k := range r.cbs {
-		cb := r.cbs[k]
-		data, mErr := protojson.Marshal(cb)
-		if mErr != nil {
-			r.logger.Error("health.reporter.httpserver: cacheCircuitBreakers marshal error: %v", mErr)
-			continue
-		}
-		pl[k] = data
-	}
-	data, err := json.Marshal(pl)
-	if err != nil {
-		r.logger.Error("health.reporter.httpserver: cacheCircuitBreakers marshal error: %v", err)
-	}
-
-	r.cbCache.write(data)
 }

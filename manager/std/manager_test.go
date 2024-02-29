@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/mock/gomock"
+	"go.uber.org/mock/gomock"
 
 	"github.com/schigh/health"
 	"github.com/schigh/health/manager/std"
@@ -525,19 +525,6 @@ func TestManager(t *testing.T) { //nolint:gocognit,gocyclo // so what
 					}
 				} else {
 					t.Fatalf("expected health checks to be updated %d times - it updated %d times", tt.report.NumHealthCheckUpdates, report.NumHealthCheckUpdates)
-				}
-			}
-
-			if report.NumCircuitBreakerUpdates != tt.report.NumCircuitBreakerUpdates {
-				if tt.report.NumCircuitBreakerUpdates > 0 {
-					min := tt.report.NumCircuitBreakerUpdates - 1
-					max := tt.report.NumCircuitBreakerUpdates + 1
-
-					if report.NumCircuitBreakerUpdates < min || report.NumCircuitBreakerUpdates > max {
-						t.Fatalf("expected circuit breakers to be updated %d times - it updated %d times", tt.report.NumCircuitBreakerUpdates, report.NumCircuitBreakerUpdates)
-					}
-				} else {
-					t.Fatalf("expected circuit breakers to be updated %d times - it updated %d times", tt.report.NumCircuitBreakerUpdates, report.NumCircuitBreakerUpdates)
 				}
 			}
 		})

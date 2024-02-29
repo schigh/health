@@ -27,17 +27,16 @@ type result struct {
 
 // Manager is the standard manager for application health checks.
 type Manager struct {
-	reporters       *reporterMap
-	checkers        *checkerMap
-	circuitBreakers *circuitBreakerMap //nolint
-	checkResults    *checkResultMap
-	checkFunnel     chan *healthpb.Check
-	errChan         chan error
-	runningPtr      uint32
-	livePtr         uint32
-	readyPtr        uint32
-	allChecksRan    uint32
-	initialReady    uint32
+	reporters    *reporterMap
+	checkers     *checkerMap
+	checkResults *checkResultMap
+	checkFunnel  chan *healthpb.Check
+	errChan      chan error
+	runningPtr   uint32
+	livePtr      uint32
+	readyPtr     uint32
+	allChecksRan uint32
+	initialReady uint32
 
 	Logger health.Logger
 }

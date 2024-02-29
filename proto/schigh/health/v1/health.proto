@@ -6,12 +6,10 @@ option go_package = "github.com/schigh/health/v1";
 
 import "google/protobuf/duration.proto";
 import "schigh/health/v1/check.proto";
-import "schigh/health/v1/cb.proto";
 
 message Health {
   string id = 1;
   bool ready = 2;
   google.protobuf.Duration uptime = 3;
   repeated Check checks = 4;
-  repeated CircuitBreaker circuit_breakers = 5;
 }

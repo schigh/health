@@ -1,20 +1,33 @@
 # Health
 
-This library provides a mechanism for a service to check its health and report it to any type of listener. The most common use case for this library is a service running as a kubernetes pod, but it is useful in any running Go service.
+This library provides a mechanism for a service to check its health and report it 
+to any type of listener. The most common use case for this library is a service 
+running as a kubernetes pod, but it is useful in any running Go service.
 
 ## Concepts
 
 ### Manager
-The manager is responsible for managing individual health checks and subsequent reporters. It handles setup and teardown of checkers and reporters. It also manages check frequencies and whether liveness and readiness should be affected
+The manager is responsible for managing individual health checks and subsequent 
+reporters. It handles setup and teardown of checkers and reporters. It also manages 
+check frequencies and whether liveness and readiness should be affected
 
 ### Checker
-A checker is anything that implements the `Checker` interface. For one-off checks, you can use the `CheckerFunc` type to wrap them (see example below).
+A checker is anything that implements the `Checker` interface. For one-off checks, 
+you can use the `CheckerFunc` type to wrap them (see example below).
 
 ### Reporter
 A reporter is anything that reports the status of health checks. The current reporters are:
-- `httpserver` - This reporter runs an HTTP server (default port 8181) that reports liveness at `/health/live` and readiness at `/health/ready`. Passing checks will always return an HTTP 200 (OK) response, while failing checks will always return an HTTP 503 (Service Unavailable) response.
-- `stdout` - This reporter prints to stdout
-- `test` - this reporter can be used for tests
+
+#### `httpserver`
+This reporter runs an HTTP server (default port 8181) that reports liveness at `/health/live` 
+and readiness at `/health/ready`. Passing checks will always return an HTTP 200 (OK) response, 
+while failing checks will always return an HTTP 503 (Service Unavailable) response.
+
+#### `stdout`
+This reporter prints to stdout
+
+#### `test`
+this reporter can be used for tests
 
 ## Basic Example
 The following is a basic example of how this library can be used
@@ -105,7 +118,6 @@ import "github.com/schigh/health"
 - [type Checker](<#Checker>)
 - [type CheckerFunc](<#CheckerFunc>)
   - [func \(cf CheckerFunc\) Check\(ctx context.Context\) \*healthpb.Check](<#CheckerFunc.Check>)
-- [type CircuitBreaker](<#CircuitBreaker>)
 - [type Config](<#Config>)
 - [type Logger](<#Logger>)
 - [type Manager](<#Manager>)
@@ -115,7 +127,6 @@ import "github.com/schigh/health"
   - [func \(n NoOpLogger\) Info\(\_ string, \_ ...any\)](<#NoOpLogger.Info>)
   - [func \(n NoOpLogger\) Warn\(\_ string, \_ ...any\)](<#NoOpLogger.Warn>)
 - [type Reporter](<#Reporter>)
-- [type Runner](<#Runner>)
 
 
 ## Variables
@@ -198,7 +209,7 @@ const (
 ```
 
 <a name="Checker"></a>
-## type [Checker](<https://github.com/schigh/health/blob/main/health.go#L82-L85>)
+## type [Checker](<https://github.com/schigh/health/blob/main/health.go#L76-L79>)
 
 Checker performs an individual health check and returns the result to the health manager.
 
@@ -227,28 +238,16 @@ func (cf CheckerFunc) Check(ctx context.Context) *healthpb.Check
 
 Check satisfies Checker.
 
-<a name="CircuitBreaker"></a>
-## type [CircuitBreaker](<https://github.com/schigh/health/blob/main/cb.go#L19-L21>)
-
-CircuitBreaker is a protective wrapper around any logic where an error tolerance can be exceeded, putting the circuit breaker into an open state. When a circuit breaker is open, the logic protected by the circuit breaker is not called. When a circuit breaker is backing off, the protected logic is called according to the backoff strategy of the circuit breaker. Circuit breakers do not directly affect the health of the application, but are an indicator of the application's ability to perform its tasks.
-
-```go
-type CircuitBreaker interface {
-    Run(context.Context, Runner) (any, error)
-}
-```
-
 <a name="Config"></a>
-## type [Config](<https://github.com/schigh/health/blob/main/config.go#L3-L8>)
+## type [Config](<https://github.com/schigh/health/blob/main/config.go#L3-L7>)
 
 
 
 ```go
 type Config struct {
-    HTTPPort               int    `envconfig:"HEALTH_HTTP_PORT" default:"8181"`
-    LivenessEndpoint       string `envconfig:"HEALTH_LIVENESS_ENDPOINT" default:"/live"`
-    ReadinessEndpoint      string `envconfig:"HEALTH_READINESS_ENDPOINT" default:"/ready"`
-    CircuitBreakerEndpoint string `envconfig:"HEALTH_CB_ENDPOINT" default:"/cb"`
+    HTTPPort          int    `envconfig:"HEALTH_HTTP_PORT" default:"8181"`
+    LivenessEndpoint  string `envconfig:"HEALTH_LIVENESS_ENDPOINT" default:"/live"`
+    ReadinessEndpoint string `envconfig:"HEALTH_READINESS_ENDPOINT" default:"/ready"`
 }
 ```
 
@@ -350,7 +349,7 @@ func (n NoOpLogger) Warn(_ string, _ ...any)
 
 
 <a name="Reporter"></a>
-## type [Reporter](<https://github.com/schigh/health/blob/main/health.go#L55-L78>)
+## type [Reporter](<https://github.com/schigh/health/blob/main/health.go#L55-L72>)
 
 Reporter reports the health status of the application to a receiving output. The mechanism by which the Reporter sends this information is implementation\-dependent. Some reporters, such as an HTTP server, are pull\-based, while others, such as a stdout reporters, are push\-based. Each reporters variant is responsible for managing the health information passed to it from the health Manager. A Manager may have multiple reporters, and a Reporter may have multiple providers. The common dialog between reporters and providers is a map of HealthCheck items keyed by string. It is implied that all health checks within a system are named uniquely. A Reporter must be prepared to receive updates at any time and at any frequency. A Reporter curates the health checks passed to it.
 
@@ -372,22 +371,7 @@ type Reporter interface {
 
     // UpdateHealthChecks is called from the manager to update the reported health checks. Only new health check invocations
     UpdateHealthChecks(context.Context, map[string]*healthpb.Check)
-
-    // UpdateCircuitBreakers is called from the manager to update the reported
-    // circuit breaker state. Only circuit breakers reporting a state change are
-    // communicated via this function, so the reporters must manage that delta
-    // internally.
-    UpdateCircuitBreakers(context.Context, map[string]*healthpb.CircuitBreaker)
 }
-```
-
-<a name="Runner"></a>
-## type [Runner](<https://github.com/schigh/health/blob/main/cb.go#L10>)
-
-Runner is any function that is dispatched by a circuit breaker. It is intended to wrap a protected area of logic such that it is not called while a circuit breaker is open.
-
-```go
-type Runner func(context.Context) (any, error)
 ```
 
 Generated by [gomarkdoc](<https://github.com/princjef/gomarkdoc>)

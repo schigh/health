@@ -23,25 +23,9 @@ import "github.com/schigh/health/pkg/v1"
   - [func \(x \*Check\) ProtoReflect\(\) protoreflect.Message](<#Check.ProtoReflect>)
   - [func \(x \*Check\) Reset\(\)](<#Check.Reset>)
   - [func \(x \*Check\) String\(\) string](<#Check.String>)
-- [type CircuitBreaker](<#CircuitBreaker>)
-  - [func \(\*CircuitBreaker\) Descriptor\(\) \(\[\]byte, \[\]int\)](<#CircuitBreaker.Descriptor>)
-  - [func \(x \*CircuitBreaker\) GetBackingOff\(\) bool](<#CircuitBreaker.GetBackingOff>)
-  - [func \(x \*CircuitBreaker\) GetClosedSince\(\) \*timestamppb.Timestamp](<#CircuitBreaker.GetClosedSince>)
-  - [func \(x \*CircuitBreaker\) GetCurrentCount\(\) uint32](<#CircuitBreaker.GetCurrentCount>)
-  - [func \(x \*CircuitBreaker\) GetName\(\) string](<#CircuitBreaker.GetName>)
-  - [func \(x \*CircuitBreaker\) GetOpen\(\) bool](<#CircuitBreaker.GetOpen>)
-  - [func \(x \*CircuitBreaker\) GetOpenSince\(\) \*timestamppb.Timestamp](<#CircuitBreaker.GetOpenSince>)
-  - [func \(x \*CircuitBreaker\) GetWillClose\(\) \*timestamppb.Timestamp](<#CircuitBreaker.GetWillClose>)
-  - [func \(x \*CircuitBreaker\) GetWindow\(\) \*durationpb.Duration](<#CircuitBreaker.GetWindow>)
-  - [func \(x \*CircuitBreaker\) GetWindowCount\(\) uint32](<#CircuitBreaker.GetWindowCount>)
-  - [func \(\*CircuitBreaker\) ProtoMessage\(\)](<#CircuitBreaker.ProtoMessage>)
-  - [func \(x \*CircuitBreaker\) ProtoReflect\(\) protoreflect.Message](<#CircuitBreaker.ProtoReflect>)
-  - [func \(x \*CircuitBreaker\) Reset\(\)](<#CircuitBreaker.Reset>)
-  - [func \(x \*CircuitBreaker\) String\(\) string](<#CircuitBreaker.String>)
 - [type Health](<#Health>)
   - [func \(\*Health\) Descriptor\(\) \(\[\]byte, \[\]int\)](<#Health.Descriptor>)
   - [func \(x \*Health\) GetChecks\(\) \[\]\*Check](<#Health.GetChecks>)
-  - [func \(x \*Health\) GetCircuitBreakers\(\) \[\]\*CircuitBreaker](<#Health.GetCircuitBreakers>)
   - [func \(x \*Health\) GetId\(\) string](<#Health.GetId>)
   - [func \(x \*Health\) GetReady\(\) bool](<#Health.GetReady>)
   - [func \(x \*Health\) GetUptime\(\) \*durationpb.Duration](<#Health.GetUptime>)
@@ -52,12 +36,6 @@ import "github.com/schigh/health/pkg/v1"
 
 
 ## Variables
-
-<a name="File_schigh_health_v1_cb_proto"></a>
-
-```go
-var File_schigh_health_v1_cb_proto protoreflect.FileDescriptor
-```
 
 <a name="File_schigh_health_v1_check_proto"></a>
 
@@ -187,170 +165,23 @@ func (x *Check) String() string
 
 
 
-<a name="CircuitBreaker"></a>
-## type [CircuitBreaker](<https://github.com/schigh/health/blob/main/pkg/v1/cb.pb.go#L25-L39>)
-
-
-
-```go
-type CircuitBreaker struct {
-    Name         string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-    Open         bool                   `protobuf:"varint,2,opt,name=open,proto3" json:"open,omitempty"`
-    BackingOff   bool                   `protobuf:"varint,3,opt,name=backing_off,json=backingOff,proto3" json:"backing_off,omitempty"`
-    WindowCount  uint32                 `protobuf:"varint,4,opt,name=window_count,json=windowCount,proto3" json:"window_count,omitempty"`
-    CurrentCount uint32                 `protobuf:"varint,5,opt,name=current_count,json=currentCount,proto3" json:"current_count,omitempty"`
-    Window       *durationpb.Duration   `protobuf:"bytes,6,opt,name=window,proto3" json:"window,omitempty"`
-    OpenSince    *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=open_since,json=openSince,proto3" json:"open_since,omitempty"`
-    ClosedSince  *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=closed_since,json=closedSince,proto3" json:"closed_since,omitempty"`
-    WillClose    *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=will_close,json=willClose,proto3" json:"will_close,omitempty"`
-    // contains filtered or unexported fields
-}
-```
-
-<a name="CircuitBreaker.Descriptor"></a>
-### func \(\*CircuitBreaker\) [Descriptor](<https://github.com/schigh/health/blob/main/pkg/v1/cb.pb.go#L69>)
-
-```go
-func (*CircuitBreaker) Descriptor() ([]byte, []int)
-```
-
-Deprecated: Use CircuitBreaker.ProtoReflect.Descriptor instead.
-
-<a name="CircuitBreaker.GetBackingOff"></a>
-### func \(\*CircuitBreaker\) [GetBackingOff](<https://github.com/schigh/health/blob/main/pkg/v1/cb.pb.go#L87>)
-
-```go
-func (x *CircuitBreaker) GetBackingOff() bool
-```
-
-
-
-<a name="CircuitBreaker.GetClosedSince"></a>
-### func \(\*CircuitBreaker\) [GetClosedSince](<https://github.com/schigh/health/blob/main/pkg/v1/cb.pb.go#L122>)
-
-```go
-func (x *CircuitBreaker) GetClosedSince() *timestamppb.Timestamp
-```
-
-
-
-<a name="CircuitBreaker.GetCurrentCount"></a>
-### func \(\*CircuitBreaker\) [GetCurrentCount](<https://github.com/schigh/health/blob/main/pkg/v1/cb.pb.go#L101>)
-
-```go
-func (x *CircuitBreaker) GetCurrentCount() uint32
-```
-
-
-
-<a name="CircuitBreaker.GetName"></a>
-### func \(\*CircuitBreaker\) [GetName](<https://github.com/schigh/health/blob/main/pkg/v1/cb.pb.go#L73>)
-
-```go
-func (x *CircuitBreaker) GetName() string
-```
-
-
-
-<a name="CircuitBreaker.GetOpen"></a>
-### func \(\*CircuitBreaker\) [GetOpen](<https://github.com/schigh/health/blob/main/pkg/v1/cb.pb.go#L80>)
-
-```go
-func (x *CircuitBreaker) GetOpen() bool
-```
-
-
-
-<a name="CircuitBreaker.GetOpenSince"></a>
-### func \(\*CircuitBreaker\) [GetOpenSince](<https://github.com/schigh/health/blob/main/pkg/v1/cb.pb.go#L115>)
-
-```go
-func (x *CircuitBreaker) GetOpenSince() *timestamppb.Timestamp
-```
-
-
-
-<a name="CircuitBreaker.GetWillClose"></a>
-### func \(\*CircuitBreaker\) [GetWillClose](<https://github.com/schigh/health/blob/main/pkg/v1/cb.pb.go#L129>)
-
-```go
-func (x *CircuitBreaker) GetWillClose() *timestamppb.Timestamp
-```
-
-
-
-<a name="CircuitBreaker.GetWindow"></a>
-### func \(\*CircuitBreaker\) [GetWindow](<https://github.com/schigh/health/blob/main/pkg/v1/cb.pb.go#L108>)
-
-```go
-func (x *CircuitBreaker) GetWindow() *durationpb.Duration
-```
-
-
-
-<a name="CircuitBreaker.GetWindowCount"></a>
-### func \(\*CircuitBreaker\) [GetWindowCount](<https://github.com/schigh/health/blob/main/pkg/v1/cb.pb.go#L94>)
-
-```go
-func (x *CircuitBreaker) GetWindowCount() uint32
-```
-
-
-
-<a name="CircuitBreaker.ProtoMessage"></a>
-### func \(\*CircuitBreaker\) [ProtoMessage](<https://github.com/schigh/health/blob/main/pkg/v1/cb.pb.go#L54>)
-
-```go
-func (*CircuitBreaker) ProtoMessage()
-```
-
-
-
-<a name="CircuitBreaker.ProtoReflect"></a>
-### func \(\*CircuitBreaker\) [ProtoReflect](<https://github.com/schigh/health/blob/main/pkg/v1/cb.pb.go#L56>)
-
-```go
-func (x *CircuitBreaker) ProtoReflect() protoreflect.Message
-```
-
-
-
-<a name="CircuitBreaker.Reset"></a>
-### func \(\*CircuitBreaker\) [Reset](<https://github.com/schigh/health/blob/main/pkg/v1/cb.pb.go#L41>)
-
-```go
-func (x *CircuitBreaker) Reset()
-```
-
-
-
-<a name="CircuitBreaker.String"></a>
-### func \(\*CircuitBreaker\) [String](<https://github.com/schigh/health/blob/main/pkg/v1/cb.pb.go#L50>)
-
-```go
-func (x *CircuitBreaker) String() string
-```
-
-
-
 <a name="Health"></a>
-## type [Health](<https://github.com/schigh/health/blob/main/pkg/v1/health.pb.go#L24-L34>)
+## type [Health](<https://github.com/schigh/health/blob/main/pkg/v1/health.pb.go#L24-L33>)
 
 
 
 ```go
 type Health struct {
-    Id              string               `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-    Ready           bool                 `protobuf:"varint,2,opt,name=ready,proto3" json:"ready,omitempty"`
-    Uptime          *durationpb.Duration `protobuf:"bytes,3,opt,name=uptime,proto3" json:"uptime,omitempty"`
-    Checks          []*Check             `protobuf:"bytes,4,rep,name=checks,proto3" json:"checks,omitempty"`
-    CircuitBreakers []*CircuitBreaker    `protobuf:"bytes,5,rep,name=circuit_breakers,json=circuitBreakers,proto3" json:"circuit_breakers,omitempty"`
+    Id     string               `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+    Ready  bool                 `protobuf:"varint,2,opt,name=ready,proto3" json:"ready,omitempty"`
+    Uptime *durationpb.Duration `protobuf:"bytes,3,opt,name=uptime,proto3" json:"uptime,omitempty"`
+    Checks []*Check             `protobuf:"bytes,4,rep,name=checks,proto3" json:"checks,omitempty"`
     // contains filtered or unexported fields
 }
 ```
 
 <a name="Health.Descriptor"></a>
-### func \(\*Health\) [Descriptor](<https://github.com/schigh/health/blob/main/pkg/v1/health.pb.go#L64>)
+### func \(\*Health\) [Descriptor](<https://github.com/schigh/health/blob/main/pkg/v1/health.pb.go#L63>)
 
 ```go
 func (*Health) Descriptor() ([]byte, []int)
@@ -359,7 +190,7 @@ func (*Health) Descriptor() ([]byte, []int)
 Deprecated: Use Health.ProtoReflect.Descriptor instead.
 
 <a name="Health.GetChecks"></a>
-### func \(\*Health\) [GetChecks](<https://github.com/schigh/health/blob/main/pkg/v1/health.pb.go#L89>)
+### func \(\*Health\) [GetChecks](<https://github.com/schigh/health/blob/main/pkg/v1/health.pb.go#L88>)
 
 ```go
 func (x *Health) GetChecks() []*Check
@@ -367,17 +198,8 @@ func (x *Health) GetChecks() []*Check
 
 
 
-<a name="Health.GetCircuitBreakers"></a>
-### func \(\*Health\) [GetCircuitBreakers](<https://github.com/schigh/health/blob/main/pkg/v1/health.pb.go#L96>)
-
-```go
-func (x *Health) GetCircuitBreakers() []*CircuitBreaker
-```
-
-
-
 <a name="Health.GetId"></a>
-### func \(\*Health\) [GetId](<https://github.com/schigh/health/blob/main/pkg/v1/health.pb.go#L68>)
+### func \(\*Health\) [GetId](<https://github.com/schigh/health/blob/main/pkg/v1/health.pb.go#L67>)
 
 ```go
 func (x *Health) GetId() string
@@ -386,7 +208,7 @@ func (x *Health) GetId() string
 
 
 <a name="Health.GetReady"></a>
-### func \(\*Health\) [GetReady](<https://github.com/schigh/health/blob/main/pkg/v1/health.pb.go#L75>)
+### func \(\*Health\) [GetReady](<https://github.com/schigh/health/blob/main/pkg/v1/health.pb.go#L74>)
 
 ```go
 func (x *Health) GetReady() bool
@@ -395,7 +217,7 @@ func (x *Health) GetReady() bool
 
 
 <a name="Health.GetUptime"></a>
-### func \(\*Health\) [GetUptime](<https://github.com/schigh/health/blob/main/pkg/v1/health.pb.go#L82>)
+### func \(\*Health\) [GetUptime](<https://github.com/schigh/health/blob/main/pkg/v1/health.pb.go#L81>)
 
 ```go
 func (x *Health) GetUptime() *durationpb.Duration
@@ -404,7 +226,7 @@ func (x *Health) GetUptime() *durationpb.Duration
 
 
 <a name="Health.ProtoMessage"></a>
-### func \(\*Health\) [ProtoMessage](<https://github.com/schigh/health/blob/main/pkg/v1/health.pb.go#L49>)
+### func \(\*Health\) [ProtoMessage](<https://github.com/schigh/health/blob/main/pkg/v1/health.pb.go#L48>)
 
 ```go
 func (*Health) ProtoMessage()
@@ -413,7 +235,7 @@ func (*Health) ProtoMessage()
 
 
 <a name="Health.ProtoReflect"></a>
-### func \(\*Health\) [ProtoReflect](<https://github.com/schigh/health/blob/main/pkg/v1/health.pb.go#L51>)
+### func \(\*Health\) [ProtoReflect](<https://github.com/schigh/health/blob/main/pkg/v1/health.pb.go#L50>)
 
 ```go
 func (x *Health) ProtoReflect() protoreflect.Message
@@ -422,7 +244,7 @@ func (x *Health) ProtoReflect() protoreflect.Message
 
 
 <a name="Health.Reset"></a>
-### func \(\*Health\) [Reset](<https://github.com/schigh/health/blob/main/pkg/v1/health.pb.go#L36>)
+### func \(\*Health\) [Reset](<https://github.com/schigh/health/blob/main/pkg/v1/health.pb.go#L35>)
 
 ```go
 func (x *Health) Reset()
@@ -431,7 +253,7 @@ func (x *Health) Reset()
 
 
 <a name="Health.String"></a>
-### func \(\*Health\) [String](<https://github.com/schigh/health/blob/main/pkg/v1/health.pb.go#L45>)
+### func \(\*Health\) [String](<https://github.com/schigh/health/blob/main/pkg/v1/health.pb.go#L44>)
 
 ```go
 func (x *Health) String() string

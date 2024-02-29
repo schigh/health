@@ -24,18 +24,14 @@ const (
 
 // Reporter reports.
 type Reporter struct {
-	live            uint32
-	ready           uint32
-	healthChecks    *healthCheckMap
-	circuitBreakers *circuitBreakerMap
+	live         uint32
+	ready        uint32
+	healthChecks *healthCheckMap
 }
 
 func (r *Reporter) Run(_ context.Context) error {
 	if r.healthChecks == nil {
 		r.healthChecks = &healthCheckMap{}
-	}
-	if r.circuitBreakers == nil {
-		r.circuitBreakers = &circuitBreakerMap{}
 	}
 
 	return nil
@@ -64,14 +60,6 @@ func (r *Reporter) SetReadiness(_ context.Context, b bool) {
 func (r *Reporter) UpdateHealthChecks(_ context.Context, m map[string]*healthpb.Check) {
 	r.healthChecks.AbsorbMap(m)
 	r.reportHealthChecks(w)
-}
-
-func (r *Reporter) UpdateCircuitBreakers(_ context.Context, m map[string]*healthpb.CircuitBreaker) {
-	r.circuitBreakers.AbsorbMap(m)
-	value := r.circuitBreakers.Value()
-	for _, v := range value {
-		_, _ = fmt.Fprintln(os.Stdout, v.String())
-	}
 }
 
 func (r *Reporter) reportLiveness(out io.Writer) {

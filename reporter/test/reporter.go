@@ -16,7 +16,6 @@ import (
 // Reporter is a reporter used for testing.
 type Reporter struct {
 	hcMx           sync.RWMutex // mutex for health checks
-	cbMx           sync.RWMutex // mutex for circuit breakers
 	running        uint32       // flag to determine if the reporter is running
 	runningToggles uint32       // number of times running changed state
 	live           uint32       // flag to determine if the reporter shows liveness
@@ -24,35 +23,30 @@ type Reporter struct {
 	ready          uint32       // flag to determine if the reporter shows readiness
 	readyToggles   uint32       // number of times readiness changed state
 	hcUpdates      uint32       // number of times health checks have been updated
-	cbUpdates      uint32       // number of times circuit breakers have been updated
 	//nolint:unused
 	hcFetches uint32 // number of times health checks have been fetched
-	//nolint:unused
-	cbFetches uint32                              // number of times circuit breakers have been fetched
-	liveUp    uint32                              // number of times liveness toggled true
-	liveDown  uint32                              // number of times liveness toggled false
-	readyUp   uint32                              // number of times readiness toggled true
-	readyDown uint32                              // number of times readiness toggled false
-	hc        map[string]*healthpb.Check          // internal map of health checks
-	cb        map[string]*healthpb.CircuitBreaker // internal map of circuit breakers
+
+	liveUp    uint32                     // number of times liveness toggled true
+	liveDown  uint32                     // number of times liveness toggled false
+	readyUp   uint32                     // number of times readiness toggled true
+	readyDown uint32                     // number of times readiness toggled false
+	hc        map[string]*healthpb.Check // internal map of health checks
 }
 
 // Report is a snapshot of this reporter's state.
 type Report struct {
-	IsRunning                bool                                `json:"-"`
-	NumRunningStateChanges   uint32                              `json:"-"`
-	IsLive                   bool                                `json:"-"`
-	NumLivenessStateChanges  uint32                              `json:"-"`
-	NumLivenessSetTrue       uint32                              `json:"-"`
-	NumLivenessSetFalse      uint32                              `json:"-"`
-	IsReady                  bool                                `json:"-"`
-	NumReadinessStateChanges uint32                              `json:"-"`
-	NumReadinessSetTrue      uint32                              `json:"-"`
-	NumReadinessSetFalse     uint32                              `json:"-"`
-	NumHealthCheckUpdates    uint32                              `json:"-"`
-	NumCircuitBreakerUpdates uint32                              `json:"-"`
-	HealthChecks             map[string]*healthpb.Check          `json:"-"`
-	CircuitBreakers          map[string]*healthpb.CircuitBreaker `json:"-"`
+	IsRunning                bool                       `json:"-"`
+	NumRunningStateChanges   uint32                     `json:"-"`
+	IsLive                   bool                       `json:"-"`
+	NumLivenessStateChanges  uint32                     `json:"-"`
+	NumLivenessSetTrue       uint32                     `json:"-"`
+	NumLivenessSetFalse      uint32                     `json:"-"`
+	IsReady                  bool                       `json:"-"`
+	NumReadinessStateChanges uint32                     `json:"-"`
+	NumReadinessSetTrue      uint32                     `json:"-"`
+	NumReadinessSetFalse     uint32                     `json:"-"`
+	NumHealthCheckUpdates    uint32                     `json:"-"`
+	HealthChecks             map[string]*healthpb.Check `json:"-"`
 }
 
 func (r Report) MarshalJSON() ([]byte, error) {
@@ -68,9 +62,7 @@ func (r Report) MarshalJSON() ([]byte, error) {
 		NumReadinessSetTrue      uint32                     `json:"numReadinessSetTrue"`
 		NumReadinessSetFalse     uint32                     `json:"numReadinessSetFalse"`
 		NumHealthCheckUpdates    uint32                     `json:"numHealthCheckUpdates"`
-		NumCircuitBreakerUpdates uint32                     `json:"numCircuitBreakerUpdates"`
 		HealthChecks             map[string]json.RawMessage `json:"healthChecks"`
-		CircuitBreakers          map[string]json.RawMessage `json:"circuitBreakers"`
 	}
 	out := alias{
 		IsRunning:                r.IsRunning,
@@ -80,7 +72,6 @@ func (r Report) MarshalJSON() ([]byte, error) {
 		IsReady:                  r.IsReady,
 		NumReadinessStateChanges: r.NumReadinessStateChanges,
 		NumHealthCheckUpdates:    r.NumHealthCheckUpdates,
-		NumCircuitBreakerUpdates: r.NumCircuitBreakerUpdates,
 		NumLivenessSetTrue:       r.NumLivenessSetTrue,
 		NumLivenessSetFalse:      r.NumLivenessSetFalse,
 		NumReadinessSetTrue:      r.NumReadinessSetTrue,
@@ -98,17 +89,6 @@ func (r Report) MarshalJSON() ([]byte, error) {
 	}
 	out.HealthChecks = hcs
 
-	cbs := make(map[string]json.RawMessage)
-	for k := range r.CircuitBreakers {
-		hc := r.CircuitBreakers[k]
-		data, err := protojson.Marshal(hc)
-		if err != nil {
-			return nil, err
-		}
-		cbs[k] = data
-	}
-	out.CircuitBreakers = cbs
-
 	return json.Marshal(out)
 }
 
@@ -125,18 +105,11 @@ func FromReporter(r health.Reporter) (*Reporter, bool) {
 // Report returns a summary of the test reporter.
 func (t *Reporter) Report() Report {
 	defer t.hcMx.Unlock()
-	defer t.cbMx.Unlock()
-	t.cbMx.Lock()
 	t.hcMx.Lock()
 
 	healthChecks := make(map[string]*healthpb.Check)
 	for k := range t.hc {
 		healthChecks[k] = t.hc[k]
-	}
-
-	circuitBreakers := make(map[string]*healthpb.CircuitBreaker)
-	for k := range t.cb {
-		circuitBreakers[k] = t.cb[k]
 	}
 
 	return Report{
@@ -147,13 +120,11 @@ func (t *Reporter) Report() Report {
 		IsReady:                  atomic.LoadUint32(&t.ready) == 1,
 		NumReadinessStateChanges: atomic.LoadUint32(&t.readyToggles),
 		NumHealthCheckUpdates:    atomic.LoadUint32(&t.hcUpdates),
-		NumCircuitBreakerUpdates: atomic.LoadUint32(&t.cbUpdates),
 		NumLivenessSetTrue:       atomic.LoadUint32(&t.liveUp),
 		NumLivenessSetFalse:      atomic.LoadUint32(&t.liveDown),
 		NumReadinessSetTrue:      atomic.LoadUint32(&t.readyUp),
 		NumReadinessSetFalse:     atomic.LoadUint32(&t.readyDown),
 		HealthChecks:             healthChecks,
-		CircuitBreakers:          circuitBreakers,
 	}
 }
 
@@ -203,18 +174,5 @@ func (t *Reporter) UpdateHealthChecks(_ context.Context, m map[string]*healthpb.
 
 	for k := range m {
 		t.hc[k] = m[k]
-	}
-}
-
-func (t *Reporter) UpdateCircuitBreakers(_ context.Context, m map[string]*healthpb.CircuitBreaker) {
-	defer atomic.AddUint32(&t.cbUpdates, 1)
-	defer t.cbMx.Unlock()
-	t.cbMx.Lock()
-	if t.cb == nil {
-		t.cb = make(map[string]*healthpb.CircuitBreaker)
-	}
-
-	for k := range m {
-		t.cb[k] = m[k]
 	}
 }

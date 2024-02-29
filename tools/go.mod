@@ -7,6 +7,7 @@ require (
 	github.com/golangci/golangci-lint v1.56.1
 	github.com/princjef/gomarkdoc v1.1.0
 	github.com/schigh/carto v1.1.1
+	go.uber.org/mock v0.4.0
 	golang.org/x/tools v0.18.0
 	google.golang.org/protobuf v1.32.0
 	mvdan.cc/gofumpt v0.6.0

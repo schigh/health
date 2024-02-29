@@ -18,7 +18,6 @@ import "github.com/schigh/health/reporter/httpserver"
   - [func \(r \*Reporter\) SetLiveness\(\_ context.Context, b bool\)](<#Reporter.SetLiveness>)
   - [func \(r \*Reporter\) SetReadiness\(\_ context.Context, b bool\)](<#Reporter.SetReadiness>)
   - [func \(r \*Reporter\) Stop\(ctx context.Context\) error](<#Reporter.Stop>)
-  - [func \(r \*Reporter\) UpdateCircuitBreakers\(\_ context.Context, m map\[string\]\*healthpb.CircuitBreaker\)](<#Reporter.UpdateCircuitBreakers>)
   - [func \(r \*Reporter\) UpdateHealthChecks\(\_ context.Context, m map\[string\]\*healthpb.Check\)](<#Reporter.UpdateHealthChecks>)
 
 
@@ -36,7 +35,7 @@ const (
 ```
 
 <a name="Config"></a>
-## type [Config](<https://github.com/schigh/health/blob/main/reporter/httpserver/config.go#L5-L12>)
+## type [Config](<https://github.com/schigh/health/blob/main/reporter/httpserver/config.go#L5-L11>)
 
 
 
@@ -46,13 +45,12 @@ type Config struct {
     Port           int    `envconfig:"HEALTH_HTTP_REPORTER_PORT" default:"8181"`
     LivenessRoute  string `envconfig:"HEALTH_HTTP_REPORTER_LIVENESS_ROUTE" default:"/live"`
     ReadinessRoute string `envconfig:"HEALTH_HTTP_REPORTER_READINESS_ROUTE" default:"/ready"`
-    CBRoute        string `envconfig:"HEALTH_HTTP_REPORTER_CB_ROUTE" default:"/cb"`
     Logger         health.Logger
 }
 ```
 
 <a name="Reporter"></a>
-## type [Reporter](<https://github.com/schigh/health/blob/main/reporter/httpserver/reporter.go#L30-L42>)
+## type [Reporter](<https://github.com/schigh/health/blob/main/reporter/httpserver/reporter.go#L28-L37>)
 
 
 
@@ -63,7 +61,7 @@ type Reporter struct {
 ```
 
 <a name="NewReporter"></a>
-### func [NewReporter](<https://github.com/schigh/health/blob/main/reporter/httpserver/reporter.go#L46>)
+### func [NewReporter](<https://github.com/schigh/health/blob/main/reporter/httpserver/reporter.go#L41>)
 
 ```go
 func NewReporter(cfg Config) *Reporter
@@ -72,7 +70,7 @@ func NewReporter(cfg Config) *Reporter
 NewReporter returns an instance of Reporter with routing and caching already set up.
 
 <a name="Reporter.Run"></a>
-### func \(\*Reporter\) [Run](<https://github.com/schigh/health/blob/main/reporter/httpserver/reporter.go#L75>)
+### func \(\*Reporter\) [Run](<https://github.com/schigh/health/blob/main/reporter/httpserver/reporter.go#L68>)
 
 ```go
 func (r *Reporter) Run(_ context.Context) error
@@ -81,7 +79,7 @@ func (r *Reporter) Run(_ context.Context) error
 
 
 <a name="Reporter.SetLiveness"></a>
-### func \(\*Reporter\) [SetLiveness](<https://github.com/schigh/health/blob/main/reporter/httpserver/reporter.go#L113>)
+### func \(\*Reporter\) [SetLiveness](<https://github.com/schigh/health/blob/main/reporter/httpserver/reporter.go#L103>)
 
 ```go
 func (r *Reporter) SetLiveness(_ context.Context, b bool)
@@ -90,7 +88,7 @@ func (r *Reporter) SetLiveness(_ context.Context, b bool)
 
 
 <a name="Reporter.SetReadiness"></a>
-### func \(\*Reporter\) [SetReadiness](<https://github.com/schigh/health/blob/main/reporter/httpserver/reporter.go#L122>)
+### func \(\*Reporter\) [SetReadiness](<https://github.com/schigh/health/blob/main/reporter/httpserver/reporter.go#L112>)
 
 ```go
 func (r *Reporter) SetReadiness(_ context.Context, b bool)
@@ -99,7 +97,7 @@ func (r *Reporter) SetReadiness(_ context.Context, b bool)
 
 
 <a name="Reporter.Stop"></a>
-### func \(\*Reporter\) [Stop](<https://github.com/schigh/health/blob/main/reporter/httpserver/reporter.go#L108>)
+### func \(\*Reporter\) [Stop](<https://github.com/schigh/health/blob/main/reporter/httpserver/reporter.go#L98>)
 
 ```go
 func (r *Reporter) Stop(ctx context.Context) error
@@ -107,17 +105,8 @@ func (r *Reporter) Stop(ctx context.Context) error
 
 
 
-<a name="Reporter.UpdateCircuitBreakers"></a>
-### func \(\*Reporter\) [UpdateCircuitBreakers](<https://github.com/schigh/health/blob/main/reporter/httpserver/reporter.go#L151>)
-
-```go
-func (r *Reporter) UpdateCircuitBreakers(_ context.Context, m map[string]*healthpb.CircuitBreaker)
-```
-
-
-
 <a name="Reporter.UpdateHealthChecks"></a>
-### func \(\*Reporter\) [UpdateHealthChecks](<https://github.com/schigh/health/blob/main/reporter/httpserver/reporter.go#L131>)
+### func \(\*Reporter\) [UpdateHealthChecks](<https://github.com/schigh/health/blob/main/reporter/httpserver/reporter.go#L121>)
 
 ```go
 func (r *Reporter) UpdateHealthChecks(_ context.Context, m map[string]*healthpb.Check)

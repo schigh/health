@@ -51,7 +51,6 @@ buf: $(BUF) ## generate proto artifacts with buf
   		$(BUF) generate && \
   		cp "$(GEN_DIR)/schigh/health/v1/health.pb.go" "$(CURDIR)/pkg/v1/health.pb.go" && \
   		cp "$(GEN_DIR)/schigh/health/v1/check.pb.go" "$(CURDIR)/pkg/v1/check.pb.go" && \
-  		cp "$(GEN_DIR)/schigh/health/v1/cb.pb.go" "$(CURDIR)/pkg/v1/cb.pb.go" && \
   		rm -rf $(GEN_DIR) ; \
   	}
 

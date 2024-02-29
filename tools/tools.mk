@@ -10,6 +10,7 @@ GOLANGCI_LINT := $(TOOLS_BIN_DIR)/golangci-lint
 GOFUMPT := $(TOOLS_BIN_DIR)/gofumpt
 GOIMPORTS := $(TOOLS_BIN_DIR)/goimports
 CARTO := $(TOOLS_BIN_DIR)/carto
+MOCKGEN := $(TOOLS_BIN_DIR)/mockgen
 
 $(TOOLS_BIN_DIR):
 	@ mkdir -p $(TOOLS_BIN_DIR)
@@ -38,5 +39,8 @@ $(GOIMPORTS): $(TOOLS_BIN_DIR)
 $(CARTO): $(TOOLS_BIN_DIR)
 	@ GOBIN=$(TOOLS_BIN_DIR) go install -modfile=$(TOOLS_MOD) github.com/schigh/carto
 
+$(MOCKGEN): $(TOOLS_BIN_DIR)
+	@ GOBIN=$(TOOLS_BIN_DIR) go install -modfile=$(TOOLS_MOD) go.uber.org/mock/mockgen
+
 .PHONY: get-tools
-get-tools: $(GOMARKDOC) $(GQLGEN) $(GOLANGCI_LINT) $(GOFUMPT) $(GOIMPORTS) $(CARTO) $(PROTOC_GEN_GO) $(BUF) ## get all the tools
+get-tools: $(GOMARKDOC) $(GQLGEN) $(GOLANGCI_LINT) $(GOFUMPT) $(GOIMPORTS) $(CARTO) $(PROTOC_GEN_GO) $(BUF) $(MOCKGEN) ## get all the tools

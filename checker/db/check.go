@@ -79,7 +79,7 @@ func (c *Checker) Check(ctx context.Context) *healthpb.Check {
 		out.Error = &structpb.Struct{
 			Fields: map[string]*structpb.Value{
 				"origin": structpb.NewStringValue("github.com/schigh/health/checker/db.Checker.Check"),
-				"text":   structpb.NewStringValue("invalid context"),
+				"text":   structpb.NewStringValue("invalid pinger"),
 			},
 		}
 		out.ErrorSince = timestamppb.New(now)
