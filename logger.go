@@ -2,7 +2,7 @@ package health
 
 // Logger defines the logging interface used internally.
 // This interface is implemented by log/slog, but can be
-// easily adapted from other loggers
+// easily adapted from other loggers.
 type Logger interface {
 	Debug(msg string, args ...any)
 	Info(msg string, args ...any)
@@ -10,7 +10,7 @@ type Logger interface {
 	Error(msg string, args ...any)
 }
 
-// NoOpLogger is used to suppress log output
+// NoOpLogger is used to suppress log output.
 type NoOpLogger struct{}
 
 func (n NoOpLogger) Debug(_ string, _ ...any) {}
