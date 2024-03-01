@@ -6,12 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/schigh/health"
@@ -48,21 +47,32 @@ func NewReporter(cfg Config) *Reporter {
 		reporter.logger = health.NoOpLogger{}
 	}
 
-	router := chi.NewRouter()
-	router.Use(chimiddleware.Recoverer)
-	router.Use(chimiddleware.Timeout(60 * time.Second))
-	router.Route("/health", func(r chi.Router) {
-		r.Get(cfg.LivenessRoute, reporter.reportLiveness)
-		r.Get(cfg.ReadinessRoute, reporter.reportReadiness)
-	})
+	mux := http.NewServeMux()
+	mux.HandleFunc(fmt.Sprintf("/health/%s", strings.TrimPrefix(cfg.LivenessRoute, "/")), reporter.reportLiveness)
+	mux.HandleFunc(fmt.Sprintf("/health/%s", strings.TrimPrefix(cfg.ReadinessRoute, "/")), reporter.reportReadiness)
+	handler := reporter.Recover(
+		http.TimeoutHandler(mux, 60*time.Second, "the request timed out"),
+	)
 
 	reporter.server = &http.Server{
 		ReadHeaderTimeout: 3 * time.Second,
 		Addr:              fmt.Sprintf("%s:%d", cfg.Addr, cfg.Port),
-		Handler:           router,
+		Handler:           handler,
 	}
 
 	return &reporter
+}
+
+func (r *Reporter) Recover(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				r.logger.Error("health.reporter.httpserver: recovered from panic: %v", recovered)
+				http.Error(rw, http.StatusText(http.StatusServiceUnavailable), http.StatusServiceUnavailable)
+			}
+		}()
+		next.ServeHTTP(rw, req)
+	})
 }
 
 func (r *Reporter) Run(_ context.Context) error {
