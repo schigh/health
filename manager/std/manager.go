@@ -55,7 +55,7 @@ func (m *Manager) running() bool {
 
 func (m *Manager) AddCheck(name string, checker health.Checker, opts ...health.AddCheckOption) error {
 	if m.running() {
-		return health.ErrAddCheckAlreadyRunning
+		return fmt.Errorf("%w.manager.std: cannot add a health check to a running health instance", health.ErrHealth)
 	}
 
 	o := health.AddCheckOptions{}
@@ -109,7 +109,7 @@ func (m *Manager) Run(ctx context.Context) <-chan error {
 	}
 
 	if m.errChan == nil {
-		// we use a buffered channel here so we can push a
+		// we use a buffered channel here, so we can push a
 		// startup error straight away if we have to
 		m.errChan = make(chan error, 1)
 	}
@@ -117,13 +117,13 @@ func (m *Manager) Run(ctx context.Context) <-chan error {
 	// make sure we have at least one checker and one reporters
 	if m.checkers == nil || m.checkers.Size() == 0 {
 		shouldReset = true
-		m.errChan <- errors.New("health.manager.std: there are no checkers specified for this manager")
+		m.errChan <- fmt.Errorf("%w.manager.std: there are no checkers specified for this manager", health.ErrHealth)
 		return m.errChan
 	}
 
 	if m.reporters == nil || m.reporters.Size() == 0 {
 		shouldReset = true
-		m.errChan <- errors.New("health.manager.std: there are no reporters specified for this manager")
+		m.errChan <- fmt.Errorf("%w.manager.std: there are no reporters specified for this manager", health.ErrHealth)
 		return m.errChan
 	}
 
@@ -174,7 +174,7 @@ func (m *Manager) Stop(ctx context.Context) error {
 	m.reporters.Each(func(key string, reporter health.Reporter) bool {
 		rErr := reporter.Stop(ctx)
 		if rErr != nil && !errors.Is(rErr, context.Canceled) {
-			errs = append(errs, fmt.Errorf("health.manager.std: reporter '%s' failed to stop: %w", key, rErr))
+			errs = append(errs, fmt.Errorf("%w.manager.std: reporter '%s' failed to stop: %w", health.ErrHealth, key, rErr))
 		}
 		return true
 	})
@@ -186,7 +186,7 @@ func (m *Manager) Stop(ctx context.Context) error {
 		}
 
 		// TODO: come up with a better way to convey 0...N errors at once
-		return errors.New(strings.Join(errStrs, "\n"))
+		return fmt.Errorf("%s.manager.std: "+strings.Join(errStrs, "\n"), health.ErrHealth)
 	}
 
 	return nil
@@ -194,7 +194,7 @@ func (m *Manager) Stop(ctx context.Context) error {
 
 func (m *Manager) AddReporter(name string, r health.Reporter) error {
 	if m.running() {
-		return errors.New("health.manager.std: cannot add a reporters to a running health instance")
+		return fmt.Errorf("%w.manager.std: cannot add a reporters to a running health instance", health.ErrHealth)
 	}
 
 	if m.reporters == nil {
@@ -426,7 +426,7 @@ func (m *Manager) evaluateFitness(ctx context.Context) {
 		}
 	}
 
-	// cant be ready if you arent live
+	// cant be ready if you aren't live
 	actuallyReady = actuallyReady && actuallyLive
 
 	// this indicates that liveness or readiness have changed

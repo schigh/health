@@ -1,6 +1,6 @@
 module github.com/schigh/health
 
-go 1.20.0
+go 1.21.0
 
 require (
 	github.com/go-chi/chi/v5 v5.0.12
@@ -9,5 +9,5 @@ require (
 
 require (
 	go.uber.org/mock v0.4.0
-	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
+	golang.org/x/xerrors v0.0.0-20231012003039-104605ab7028 // indirect
 )
