@@ -186,7 +186,7 @@ func (m *Manager) Stop(ctx context.Context) error {
 		}
 
 		// TODO: come up with a better way to convey 0...N errors at once
-		return fmt.Errorf("%s.manager.std: "+strings.Join(errStrs, "\n"), health.ErrHealth)
+		return fmt.Errorf("%w.manager.std: "+strings.Join(errStrs, "\n"), health.ErrHealth)
 	}
 
 	return nil
