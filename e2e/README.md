@@ -36,7 +36,7 @@ make e2e-teardown   # delete Kind cluster
 
 | Test | What it verifies |
 |---|---|
-| TestProbesHealthy | All 3 services respond 200 on /health/live, /health/ready, /health/startup |
+| TestProbesHealthy | All 3 services respond 200 on /livez, /readyz, /healthz |
 | TestSelfDescribingJSON | JSON response includes group, componentType, duration, lastCheck |
 | TestDiscoveryManifest | /.well-known/health manifest has service name, checks, dependsOn |
 | TestDiscoveryGraph | Manifest chain: gateway → orders → payments verified end-to-end |

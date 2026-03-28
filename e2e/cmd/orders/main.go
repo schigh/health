@@ -48,7 +48,7 @@ func main() {
 	}
 
 	if err := mgr.AddCheck("payments-api",
-		checkhttp.NewChecker("payments-api", "http://payments-svc:8183/health/ready",
+		checkhttp.NewChecker("payments-api", "http://payments-svc:8183/readyz",
 			checkhttp.WithTimeout(3*time.Second),
 		),
 		health.WithCheckFrequency(health.CheckAtInterval, 5*time.Second, 0),

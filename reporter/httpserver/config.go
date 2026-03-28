@@ -68,8 +68,8 @@ func defaultConfig() Config {
 	return Config{
 		Addr:           "0.0.0.0",
 		Port:           8181,
-		LivenessRoute:  "/live",
-		ReadinessRoute: "/ready",
-		StartupRoute:   "/startup",
+		LivenessRoute:  "/livez",
+		ReadinessRoute: "/readyz",
+		StartupRoute:   "/healthz",
 	}
 }

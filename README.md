@@ -2,6 +2,8 @@
 
 A zero-dependency health check library for Go services. Built for Kubernetes, useful everywhere.
 
+**[Full Documentation](https://schigh.github.io/health/)** | [pkg.go.dev](https://pkg.go.dev/github.com/schigh/health/v2)
+
 ```go
 go get github.com/schigh/health/v2
 ```
@@ -151,7 +153,7 @@ reporter := httpserver.NewReporter(httpserver.Config{
 })
 ```
 
-Endpoints: `/health/live`, `/health/ready`, `/health/startup`
+Endpoints: `/livez`, `/readyz`, `/healthz`
 
 ### gRPC
 
@@ -213,21 +215,21 @@ Instrumented reporter for unit tests. Tracks state changes, toggle counts, and h
 ```yaml
 livenessProbe:
   httpGet:
-    path: /health/live
+    path: /livez
     port: 8181
   initialDelaySeconds: 5
   periodSeconds: 10
 
 readinessProbe:
   httpGet:
-    path: /health/ready
+    path: /readyz
     port: 8181
   initialDelaySeconds: 5
   periodSeconds: 10
 
 startupProbe:
   httpGet:
-    path: /health/startup
+    path: /healthz
     port: 8181
   failureThreshold: 30
   periodSeconds: 2

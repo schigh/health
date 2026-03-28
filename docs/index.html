@@ -13,6 +13,7 @@
     <a href="#top" class="nav-logo">health<span>/v2</span></a>
     <div class="nav-links">
       <a href="#why">Why</a>
+      <a href="#concepts">Concepts</a>
       <a href="#quickstart">Quick Start</a>
       <a href="#checkers">Checkers</a>
       <a href="#reporters">Reporters</a>
@@ -20,7 +21,8 @@
       <a href="#middleware">Middleware</a>
       <a href="#discovery">Discovery</a>
       <a href="#kubernetes">Kubernetes</a>
-      <a href="#architecture">Architecture</a>
+      <a href="#architecture">Internals</a>
+      <a href="#e2e">E2E Testing</a>
       <a href="https://github.com/schigh/health" class="nav-gh">GitHub</a>
     </div>
   </div>
@@ -56,58 +58,126 @@
         </tr>
       </thead>
       <tbody>
-        <tr>
-          <td>External deps</td>
-          <td class="highlight"><strong>0</strong></td>
-          <td>2</td>
-          <td>3</td>
-          <td>5</td>
-        </tr>
-        <tr>
-          <td>K8s probes</td>
-          <td class="highlight">live, ready, <strong>startup</strong></td>
-          <td>live, ready</td>
-          <td>live, ready</td>
-          <td>live, ready</td>
-        </tr>
-        <tr>
-          <td>Degraded state</td>
-          <td class="highlight"><strong>yes</strong></td>
-          <td>no</td>
-          <td>no</td>
-          <td>no</td>
-        </tr>
-        <tr>
-          <td>Built-in checkers</td>
-          <td class="highlight">HTTP, TCP, DNS, Redis, DB, command</td>
-          <td>HTTP, TCP, DNS</td>
-          <td>none</td>
-          <td>none</td>
-        </tr>
-        <tr>
-          <td>Dependency graphs</td>
-          <td class="highlight"><strong>yes</strong></td>
-          <td>no</td>
-          <td>no</td>
-          <td>no</td>
-        </tr>
-        <tr>
-          <td>OTel / Prometheus</td>
-          <td class="highlight"><strong>both</strong></td>
-          <td>Prometheus only</td>
-          <td>no</td>
-          <td>no</td>
-        </tr>
-        <tr>
-          <td>Maintained</td>
-          <td class="highlight"><strong>active</strong></td>
-          <td>archived</td>
-          <td>active</td>
-          <td>archived</td>
-        </tr>
+        <tr><td>External deps</td><td class="highlight"><strong>0</strong></td><td>2</td><td>3</td><td>5</td></tr>
+        <tr><td>K8s probes</td><td class="highlight">live, ready, <strong>startup</strong></td><td>live, ready</td><td>live, ready</td><td>live, ready</td></tr>
+        <tr><td>Degraded state</td><td class="highlight"><strong>yes</strong></td><td>no</td><td>no</td><td>no</td></tr>
+        <tr><td>Built-in checkers</td><td class="highlight">HTTP, TCP, DNS, Redis, DB, command</td><td>HTTP, TCP, DNS</td><td>none</td><td>none</td></tr>
+        <tr><td>Dependency graphs</td><td class="highlight"><strong>yes</strong></td><td>no</td><td>no</td><td>no</td></tr>
+        <tr><td>OTel / Prometheus</td><td class="highlight"><strong>both</strong></td><td>Prometheus only</td><td>no</td><td>no</td></tr>
+        <tr><td>Maintained</td><td class="highlight"><strong>active</strong></td><td>archived</td><td>active</td><td>archived</td></tr>
       </tbody>
     </table>
   </div>
+</section>
+
+<!-- CONCEPTS -->
+<section id="concepts">
+  <h2>Core Concepts</h2>
+  <p>The library is built around three interfaces that work together: Manager, Checker, and Reporter. Understanding these is the key to everything else.</p>
+
+  <div class="concept-grid">
+
+    <div class="concept-card concept-manager">
+      <div class="concept-icon">M</div>
+      <h3>Manager</h3>
+      <p>The <strong>Manager</strong> is the central orchestrator. It owns the lifecycle of every checker and reporter. When you call <code>mgr.Run(ctx)</code>, it starts all reporters, dispatches all checkers on their configured schedules, and begins evaluating fitness.</p>
+      <p>The manager is responsible for:</p>
+      <ul>
+        <li>Dispatching checks (one-time or at intervals, with optional delays)</li>
+        <li>Processing check results through a buffered channel (<code>checkFunnel</code>)</li>
+        <li>Evaluating aggregate fitness: liveness, readiness, and startup</li>
+        <li>Notifying all reporters when state changes</li>
+        <li>Graceful shutdown of all checkers and reporters</li>
+      </ul>
+      <pre><code>mgr := std.Manager{Logger: health.DefaultLogger()}
+mgr.AddCheck(<span class="str">"postgres"</span>, checker, opts...)
+mgr.AddReporter(<span class="str">"http"</span>, reporter)
+errChan := mgr.Run(ctx)  <span class="cmt">// starts everything</span>
+mgr.Stop(ctx)             <span class="cmt">// graceful shutdown</span></code></pre>
+    </div>
+
+    <div class="concept-card concept-checker">
+      <div class="concept-icon">C</div>
+      <h3>Checker</h3>
+      <p>A <strong>Checker</strong> performs an individual health check and returns a <code>*CheckResult</code>. That's the entire interface: one method.</p>
+      <pre><code><span class="kw">type</span> Checker <span class="kw">interface</span> {
+    Check(context.Context) *CheckResult
+}</code></pre>
+      <p>The manager calls this method on the schedule you configure. The checker doesn't know about scheduling, reporters, or fitness evaluation. It just answers one question: <em>is this dependency healthy right now?</em></p>
+      <p>Checkers return a <code>CheckResult</code> with:</p>
+      <ul>
+        <li><strong>Status</strong>: Healthy, Degraded, or Unhealthy</li>
+        <li><strong>Duration</strong>: how long the check took</li>
+        <li><strong>Error</strong>: what went wrong (if anything)</li>
+        <li><strong>Metadata</strong>: arbitrary key-value pairs for observability</li>
+      </ul>
+      <p>The manager overrides certain fields after the checker returns (Name, impact flags, Group, ComponentType, DependsOn) from the registered options. This means a checker never needs to know how it's configured in the manager.</p>
+    </div>
+
+    <div class="concept-card concept-reporter">
+      <div class="concept-icon">R</div>
+      <h3>Reporter</h3>
+      <p>A <strong>Reporter</strong> exposes health state to the outside world. Some are pull-based (HTTP server waits for requests), some are push-based (stdout prints on every update, OTel emits metrics).</p>
+      <pre><code><span class="kw">type</span> Reporter <span class="kw">interface</span> {
+    Run(context.Context) error
+    Stop(context.Context) error
+    SetLiveness(context.Context, <span class="kw">bool</span>)
+    SetReadiness(context.Context, <span class="kw">bool</span>)
+    SetStartup(context.Context, <span class="kw">bool</span>)
+    UpdateHealthChecks(context.Context, <span class="kw">map</span>[<span class="kw">string</span>]*CheckResult)
+}</code></pre>
+      <p>The manager calls <code>SetLiveness</code>, <code>SetReadiness</code>, and <code>SetStartup</code> whenever the aggregate state changes. It calls <code>UpdateHealthChecks</code> after every individual check completes, passing the latest result. Reporters are free to store, cache, or forward this data however they want.</p>
+      <p>A manager can have multiple reporters simultaneously (e.g., HTTP for K8s probes + Prometheus for metrics + stdout for local dev).</p>
+    </div>
+
+  </div>
+
+  <h3>How They Fit Together</h3>
+  <div class="concept-flow">
+    <pre>
+  You register:                The manager does:              Reporters expose:
+
+  mgr.AddCheck(...)    ──▶    dispatch on schedule    ──▶    /livez  (200 or 503)
+  mgr.AddCheck(...)    ──▶    collect results         ──▶    /readyz (200 or 503)
+  mgr.AddCheck(...)    ──▶    evaluate fitness        ──▶    /healthz
+                              (liveness, readiness,          /.well-known/health
+                               startup)                      OTel metrics
+  mgr.AddReporter(...) ──▶    notify on state change  ──▶    Prometheus /metrics
+  mgr.AddReporter(...) ──▶                             ──▶    gRPC Health.Check()
+    </pre>
+  </div>
+
+  <h3>CheckResult</h3>
+  <p>The <code>CheckResult</code> is the data type that flows through the entire system. Every checker produces one, the manager enriches it, and every reporter consumes it.</p>
+  <pre><code><span class="kw">type</span> CheckResult <span class="kw">struct</span> {
+    Name             <span class="kw">string</span>            <span class="cmt">// set by manager from registered name</span>
+    Status           Status            <span class="cmt">// Healthy, Degraded, or Unhealthy</span>
+    AffectsLiveness  <span class="kw">bool</span>              <span class="cmt">// set by manager from WithLivenessImpact()</span>
+    AffectsReadiness <span class="kw">bool</span>              <span class="cmt">// set by manager from WithReadinessImpact()</span>
+    AffectsStartup   <span class="kw">bool</span>              <span class="cmt">// set by manager from WithStartupImpact()</span>
+    Group            <span class="kw">string</span>            <span class="cmt">// set by manager from WithGroup()</span>
+    ComponentType    <span class="kw">string</span>            <span class="cmt">// set by manager from WithComponentType()</span>
+    DependsOn        []<span class="kw">string</span>          <span class="cmt">// set by manager from WithDependsOn()</span>
+    Error            <span class="kw">error</span>             <span class="cmt">// set by checker</span>
+    ErrorSince       time.Time         <span class="cmt">// set by checker</span>
+    Duration         time.Duration     <span class="cmt">// set by checker</span>
+    Metadata         <span class="kw">map</span>[<span class="kw">string</span>]<span class="kw">string</span> <span class="cmt">// set by checker</span>
+    Timestamp        time.Time         <span class="cmt">// set by checker</span>
+}</code></pre>
+
+  <h3>Fitness Evaluation</h3>
+  <p>After every check result, the manager runs <code>evaluateFitness</code>. This is the logic that determines whether the service is live, ready, and started:</p>
+  <ul>
+    <li>If <strong>any</strong> check with <code>WithLivenessImpact()</code> is Unhealthy, liveness is false (and readiness is also false, because you can't be ready if you're not live)</li>
+    <li>If <strong>any</strong> check with <code>WithReadinessImpact()</code> is Unhealthy, readiness is false (but liveness is unaffected)</li>
+    <li><strong>Degraded</strong> checks are reported but never fail probes. They're warnings, not failures.</li>
+    <li>Readiness is not set to true until <strong>all</strong> registered checks have reported at least once (the "first-run gate")</li>
+    <li>If startup checks exist, liveness and readiness are not evaluated until <strong>all</strong> startup checks pass (the "startup gate"). Once startup completes, it's never re-evaluated.</li>
+  </ul>
+
+  <h3>Concurrency Model</h3>
+  <p>Each checker gets its own dispatch goroutine. Results flow through a buffered channel (<code>checkFunnel</code>, sized to the number of checkers) into a single processing goroutine that runs <code>processHealthCheck</code> and <code>evaluateFitness</code> sequentially. This means fitness evaluation is never concurrent with itself, eliminating race conditions in state transitions.</p>
+  <p>Checkers that panic are recovered by <code>safeCheck()</code> and reported as Unhealthy. Nil results are caught with a nil guard. The manager never crashes from a misbehaving checker.</p>
 </section>
 
 <!-- QUICK START -->
@@ -119,6 +189,7 @@
 
 <span class="kw">import</span> (
     <span class="str">"context"</span>
+    <span class="str">"log"</span>
     <span class="str">"os/signal"</span>
     <span class="str">"syscall"</span>
     <span class="str">"time"</span>
@@ -135,41 +206,50 @@
         syscall.SIGINT, syscall.SIGTERM)
     <span class="kw">defer</span> cancel()
 
-    mgr := std.Manager{}
+    mgr := std.Manager{Logger: health.DefaultLogger()}
 
     <span class="cmt">// HTTP dependency check</span>
-    mgr.AddCheck(<span class="str">"payments-api"</span>,
+    <span class="kw">if</span> err := mgr.AddCheck(<span class="str">"payments-api"</span>,
         http.NewChecker(<span class="str">"payments"</span>, <span class="str">"https://payments.internal/health"</span>),
         health.WithCheckFrequency(health.CheckAtInterval, 10*time.Second, 0),
         health.WithLivenessImpact(),
         health.WithReadinessImpact(),
         health.WithGroup(<span class="str">"external"</span>),
         health.WithComponentType(<span class="str">"http"</span>),
-    )
+    ); err != nil {
+        log.Fatal(err)
+    }
 
     <span class="cmt">// Postgres via TCP</span>
-    mgr.AddCheck(<span class="str">"postgres"</span>,
+    <span class="kw">if</span> err := mgr.AddCheck(<span class="str">"postgres"</span>,
         tcp.NewChecker(<span class="str">"postgres"</span>, <span class="str">"localhost:5432"</span>),
         health.WithCheckFrequency(health.CheckAtInterval, 5*time.Second, 0),
         health.WithLivenessImpact(),
         health.WithReadinessImpact(),
+        health.WithStartupImpact(),
         health.WithGroup(<span class="str">"database"</span>),
         health.WithComponentType(<span class="str">"datastore"</span>),
-    )
+    ); err != nil {
+        log.Fatal(err)
+    }
 
     <span class="cmt">// HTTP reporter with BasicAuth</span>
-    mgr.AddReporter(<span class="str">"http"</span>, httpserver.New(
+    <span class="kw">if</span> err := mgr.AddReporter(<span class="str">"http"</span>, httpserver.New(
         httpserver.WithPort(8181),
         httpserver.WithServiceName(<span class="str">"orders-api"</span>),
         httpserver.WithMiddleware(httpserver.BasicAuth(<span class="str">"admin"</span>, <span class="str">"secret"</span>)),
-    ))
+    )); err != nil {
+        log.Fatal(err)
+    }
 
     errChan := mgr.Run(ctx)
     <span class="kw">select</span> {
     <span class="kw">case</span> err := &lt;-errChan:
-        panic(err)
+        log.Fatalf(<span class="str">"manager error: %v"</span>, err)
     <span class="kw">case</span> &lt;-ctx.Done():
-        mgr.Stop(ctx)
+        <span class="kw">if</span> err := mgr.Stop(ctx); err != nil {
+            log.Printf(<span class="str">"stop error: %v"</span>, err)
+        }
     }
 }</code></pre>
 </section>
@@ -180,7 +260,6 @@
   <p>All checkers are zero-dependency, using only the standard library. Each returns <code>*health.CheckResult</code> with Duration, Timestamp, and Metadata populated.</p>
 
   <div class="checker-grid">
-
     <div class="checker-card">
       <h3>checker/http</h3>
       <p>Checks an HTTP endpoint returns the expected status code.</p>
@@ -239,7 +318,6 @@
     <span class="kw">return</span> err
 })</code></pre>
     </div>
-
   </div>
 
   <h3>Custom Checkers</h3>
@@ -264,9 +342,7 @@ health.CheckerFunc(<span class="kw">func</span>(ctx context.Context) *health.Che
 
   <div class="options-table">
     <table>
-      <thead>
-        <tr><th>Option</th><th>What it does</th></tr>
-      </thead>
+      <thead><tr><th>Option</th><th>What it does</th></tr></thead>
       <tbody>
         <tr><td><code>WithCheckFrequency(freq, interval, delay)</code></td><td>Set check schedule: <code>CheckOnce</code>, <code>CheckAtInterval</code>, <code>CheckAfter</code></td></tr>
         <tr><td><code>WithLivenessImpact()</code></td><td>Failing check kills liveness (and readiness)</td></tr>
@@ -284,18 +360,9 @@ health.CheckerFunc(<span class="kw">func</span>(ctx context.Context) *health.Che
 <section id="status">
   <h2>Health Status</h2>
   <div class="status-cards">
-    <div class="status-card status-healthy">
-      <h3>StatusHealthy</h3>
-      <p>Check is passing. All good.</p>
-    </div>
-    <div class="status-card status-degraded">
-      <h3>StatusDegraded</h3>
-      <p>Check is passing with warnings. Does <strong>not</strong> fail liveness or readiness probes. Reported to observers.</p>
-    </div>
-    <div class="status-card status-unhealthy">
-      <h3>StatusUnhealthy</h3>
-      <p>Check is failing. Affects liveness/readiness based on impact options.</p>
-    </div>
+    <div class="status-card status-healthy"><h3>StatusHealthy</h3><p>Check is passing. All good.</p></div>
+    <div class="status-card status-degraded"><h3>StatusDegraded</h3><p>Check is passing with warnings. Does <strong>not</strong> fail liveness or readiness probes. Reported to observers.</p></div>
+    <div class="status-card status-unhealthy"><h3>StatusUnhealthy</h3><p>Check is failing. Affects liveness/readiness based on impact options.</p></div>
   </div>
 </section>
 
@@ -305,7 +372,6 @@ health.CheckerFunc(<span class="kw">func</span>(ctx context.Context) *health.Che
   <p>Reporters receive health state from the manager and expose it to external observers. The core module has three built-in reporters (zero deps). Three more are available as separate modules.</p>
 
   <div class="reporter-grid">
-
     <div class="reporter-card">
       <h3>HTTP Server <span class="badge">core</span></h3>
       <p>Runs an HTTP server with liveness, readiness, startup, and discovery endpoints.</p>
@@ -314,9 +380,9 @@ health.CheckerFunc(<span class="kw">func</span>(ctx context.Context) *health.Che
     httpserver.WithServiceName(<span class="str">"my-api"</span>),
 )
 <span class="cmt">// Endpoints:
-// /health/live     → 200 or 503
-// /health/ready    → 200 or 503
-// /health/startup  → 200 or 503
+// /livez     → 200 or 503
+// /readyz    → 200 or 503
+// /healthz  → 200 or 503
 // /.well-known/health → manifest JSON</span></code></pre>
     </div>
 
@@ -363,7 +429,6 @@ mgr.AddReporter(<span class="str">"test"</span>, rpt)
 report := rpt.Report()
 fmt.Println(report.NumLivenessStateChanges)</code></pre>
     </div>
-
   </div>
 </section>
 
@@ -471,16 +536,14 @@ Service A                    Service B                    Service C
 └─────────────┘              └─────────────┘              └─────────────┘
 
 DiscoverGraph("http://orders:8181")
-  → fetches A's manifest
-  → follows DependsOn to B
-  → fetches B's manifest
-  → follows DependsOn to C
-  → returns complete graph
+  → fetches A's manifest, follows DependsOn to B
+  → fetches B's manifest, follows DependsOn to C
+  → returns complete graph with status at every node
     </pre>
   </div>
 
   <div class="info-box">
-    <strong>Convention:</strong> <code>/.well-known/</code> follows <a href="https://www.iana.org/assignments/well-known-uris/">RFC 8615</a> for machine-discoverable service metadata. Same convention as OpenID Connect, ACME, and security.txt.
+    <strong>Convention:</strong> <code>/.well-known/</code> follows <a href="https://www.iana.org/assignments/well-known-uris/">RFC 8615</a> for machine-discoverable service metadata. Same convention as OpenID Connect, ACME, and security.txt. Unreachable nodes are recorded as "unknown" without failing the graph. Max depth (default 10) prevents cycles.
   </div>
 </section>
 
@@ -492,7 +555,7 @@ DiscoverGraph("http://orders:8181")
   <pre><code><span class="cmt"># Liveness: is the process alive?</span>
 livenessProbe:
   httpGet:
-    path: /health/live
+    path: /livez
     port: 8181
   initialDelaySeconds: 5
   periodSeconds: 10
@@ -500,7 +563,7 @@ livenessProbe:
 <span class="cmt"># Readiness: can it serve traffic?</span>
 readinessProbe:
   httpGet:
-    path: /health/ready
+    path: /readyz
     port: 8181
   initialDelaySeconds: 5
   periodSeconds: 10
@@ -508,7 +571,7 @@ readinessProbe:
 <span class="cmt"># Startup: has it finished initializing?</span>
 startupProbe:
   httpGet:
-    path: /health/startup
+    path: /healthz
     port: 8181
   failureThreshold: 30
   periodSeconds: 2</code></pre>
@@ -525,75 +588,122 @@ startupProbe:
 )</code></pre>
 </section>
 
-<!-- METADATA -->
-<section id="metadata">
-  <h2>Check Metadata</h2>
-  <p>Every check carries structured metadata. The HTTP reporter includes it in JSON responses, and the discovery protocol uses it for graph building.</p>
-
-  <pre><code>mgr.AddCheck(<span class="str">"postgres"</span>, dbChecker,
-    health.WithGroup(<span class="str">"database"</span>),
-    health.WithComponentType(<span class="str">"datastore"</span>),
-    health.WithDependsOn(<span class="str">"http://pgbouncer:6432"</span>),
-)</code></pre>
-
-  <p>The <code>/health/ready</code> endpoint returns:</p>
-  <pre><code>{
-  <span class="str">"postgres"</span>: {
-    <span class="str">"name"</span>: <span class="str">"postgres"</span>,
-    <span class="str">"status"</span>: <span class="str">"healthy"</span>,
-    <span class="str">"group"</span>: <span class="str">"database"</span>,
-    <span class="str">"componentType"</span>: <span class="str">"datastore"</span>,
-    <span class="str">"duration"</span>: <span class="str">"1.234ms"</span>,
-    <span class="str">"lastCheck"</span>: <span class="str">"2026-03-28T14:30:00Z"</span>
-  }
-}</code></pre>
-</section>
-
-<!-- ARCHITECTURE -->
+<!-- ARCHITECTURE INTERNALS -->
 <section id="architecture">
-  <h2>Architecture</h2>
+  <h2>Internals</h2>
+  <p>For the curious. Here's how data flows through the system.</p>
+
   <div class="arch-diagram">
     <pre>
-┌────────────────────────────────────────────────────────────────┐
-│                          Manager                               │
-│                                                                │
-│  AddCheck() ──▶ checkers map ──▶ dispatch goroutines           │
-│                                       │                        │
-│                                       ▼                        │
-│                                 checkFunnel (buffered)         │
-│                                       │                        │
-│                                       ▼                        │
-│                              processHealthCheck                │
-│                                       │                        │
-│                               evaluateFitness                  │
-│                              ╱        │        ╲               │
-│                       setLive    setReady    setStartup        │
-│                              ╲        │        ╱               │
-│                                       ▼                        │
-│  AddReporter() ──▶ reporters map ──▶ fan out to all reporters  │
-└────────────────────────────────────────────────────────────────┘
-         │                │                │              │
-         ▼                ▼                ▼              ▼
-    ┌─────────┐    ┌───────────┐    ┌──────────┐   ┌──────────┐
-    │  HTTP   │    │   gRPC    │    │   OTel   │   │  Prom    │
-    │ /live   │    │ Check()   │    │ gauges   │   │ gauges   │
-    │ /ready  │    │ Watch()   │    │ hist     │   │ counters │
-    │/startup │    │           │    │ counter  │   │ /metrics │
-    │/.well-  │    │           │    │          │   │          │
-    │known/   │    │           │    │          │   │          │
-    │health   │    │           │    │          │   │          │
-    └─────────┘    └───────────┘    └──────────┘   └──────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                            Manager                                  │
+│                                                                     │
+│  AddCheck(name, checker, opts...)                                   │
+│       │                                                             │
+│       ▼                                                             │
+│  checkers syncmap.Map[string, wrapper]                              │
+│       │                                                             │
+│       ├─── dispatchIntervalCheck(ctx, name, wrapper)  [goroutine]   │
+│       │         ticker fires → safeCheck() → applyCheckOptions()    │
+│       │         → checkFunnel chan                                   │
+│       │                                                             │
+│       └─── dispatchOneTimeCheck(ctx, name, wrapper)   [goroutine]   │
+│                 safeCheck() → applyCheckOptions()                   │
+│                 → checkFunnel chan                                   │
+│                                                                     │
+│  checkFunnel (buffered, size = num checkers)                        │
+│       │                                                             │
+│       ▼                                                             │
+│  processHealthCheck(ctx, *CheckResult)        [single goroutine]    │
+│       │  1. nil guard                                               │
+│       │  2. store result in checkResults map                        │
+│       │  3. check if all checks have reported (first-run gate)      │
+│       │  4. update reporters with latest check result               │
+│       │                                                             │
+│       ▼                                                             │
+│  evaluateFitness(ctx)                                               │
+│       │  1. bail if manager stopped                                 │
+│       │  2. bail if not all checks have reported yet                │
+│       │  3. if startup checks exist and not all passed: bail        │
+│       │  4. AND across all check results for liveness/readiness     │
+│       │  5. can't be ready if not live                              │
+│       │  6. notify reporters on state change                        │
+│       │                                                             │
+│       ▼                                                             │
+│  setLive / setReady / setStartup                                    │
+│       atomic swap + fan out to reporters.Each(...)                  │
+└─────────────────────────────────────────────────────────────────────┘
+         │              │              │              │
+         ▼              ▼              ▼              ▼
+    ┌─────────┐   ┌──────────┐   ┌─────────┐   ┌──────────┐
+    │  HTTP   │   │   gRPC   │   │  OTel   │   │  Prom    │
+    │ /live   │   │ Check()  │   │ gauges  │   │ gauges   │
+    │ /ready  │   │ Watch()  │   │ hist    │   │ counters │
+    │/startup │   │          │   │ counter │   │ /metrics │
+    │/.well-  │   │          │   │         │   │          │
+    │known/   │   │          │   │         │   │          │
+    │health   │   │          │   │         │   │          │
+    └─────────┘   └──────────┘   └─────────┘   └──────────┘
     </pre>
   </div>
 
   <h3>Key Design Decisions</h3>
   <ul>
-    <li><strong>Zero deps in core.</strong> The core module (<code>go list -m all</code>) has zero external dependencies. Heavy deps (gRPC, OTel, Prometheus) are in separate <code>go.mod</code> files. You only pay for what you import.</li>
+    <li><strong>Zero deps in core.</strong> The core module has zero external dependencies. Heavy deps (gRPC, OTel, Prometheus) are in separate <code>go.mod</code> files. You only pay for what you import.</li>
     <li><strong>Functional options everywhere.</strong> Every configuration point uses the functional options pattern. No bare booleans, no positional parameters.</li>
-    <li><strong>Caller-controlled concurrency.</strong> The manager spawns goroutines for check dispatch, but reporters control their own lifecycle. No hidden goroutines.</li>
-    <li><strong>Panic recovery at every boundary.</strong> Checkers that panic don't crash the manager. Serialization panics don't crash reporters. The library never takes down your service.</li>
-    <li><strong>Self-describing endpoints.</strong> Health JSON includes Group, ComponentType, Duration, Timestamp. The <code>/.well-known/health</code> manifest makes every service discoverable.</li>
+    <li><strong>Single processing goroutine.</strong> All check results funnel through one goroutine. This eliminates race conditions in fitness evaluation without requiring locks on state transitions.</li>
+    <li><strong>Panic recovery at every boundary.</strong> <code>safeCheck()</code> recovers panicking checkers. <code>cacheHealthChecks()</code> recovers serialization panics. <code>Recover</code> middleware catches HTTP handler panics. The library never takes down your service.</li>
+    <li><strong>Self-describing endpoints.</strong> Health JSON includes Group, ComponentType, Duration, Timestamp, DependsOn. The <code>/.well-known/health</code> manifest makes every service discoverable.</li>
+    <li><strong>Module architecture.</strong> Core module (<code>github.com/schigh/health/v2</code>) has everything you need for basic use. Reporters with heavy dependencies are separate Go modules with their own <code>go.mod</code>:
+      <ul>
+        <li><code>reporter/grpc</code> depends on <code>google.golang.org/grpc</code></li>
+        <li><code>reporter/otel</code> depends on <code>go.opentelemetry.io/otel</code></li>
+        <li><code>reporter/prometheus</code> depends on <code>github.com/prometheus/client_golang</code></li>
+      </ul>
+    </li>
   </ul>
+</section>
+
+<!-- E2E TESTING -->
+<section id="e2e">
+  <h2>E2E Testing</h2>
+  <p>The library ships with a full end-to-end test suite that runs 3 microservices in a Kind (Kubernetes-in-Docker) cluster with real Postgres and Redis.</p>
+
+  <div class="discovery-flow">
+    <pre>
+Gateway (:8181) ──HTTP──▶ Orders (:8182) ──HTTP──▶ Payments (:8183)
+                            │         │
+                         TCP│      RESP│
+                            ▼         ▼
+                        Postgres    Redis
+    </pre>
+  </div>
+
+  <div class="options-table">
+    <table>
+      <thead><tr><th>Test</th><th>What it proves</th></tr></thead>
+      <tbody>
+        <tr><td><code>TestProbesHealthy</code></td><td>All 3 K8s probes return 200 on all 3 services</td></tr>
+        <tr><td><code>TestSelfDescribingJSON</code></td><td>JSON includes group, componentType, duration, lastCheck</td></tr>
+        <tr><td><code>TestDiscoveryManifest</code></td><td>All 3 services have correct manifest with check counts</td></tr>
+        <tr><td><code>TestDiscoveryGraph</code></td><td>Dependency chain gateway → orders → payments verified</td></tr>
+        <tr><td><code>TestRedisFailure</code></td><td>Redis down: readiness=503, liveness still 200</td></tr>
+        <tr><td><code>TestCascadingFailure</code></td><td>Postgres down cascades through all 3 services + recovery</td></tr>
+        <tr><td><code>TestStartupSequencing</code></td><td>Pod stays not-ready until startup dep available</td></tr>
+        <tr><td><code>TestManifestStatus</code></td><td>Manifest status changes during outage, shows error details</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <pre><code><span class="cmt"># Run the full E2E suite (requires Docker + Kind)</span>
+make e2e
+
+<span class="cmt"># Or step by step for debugging</span>
+make e2e-cluster   <span class="cmt"># create Kind cluster</span>
+make e2e-build     <span class="cmt"># build Docker images</span>
+make e2e-deploy    <span class="cmt"># deploy to K8s</span>
+make e2e-test      <span class="cmt"># run tests</span>
+make e2e-teardown  <span class="cmt"># delete cluster</span></code></pre>
 </section>
 
 <!-- INSTALL -->
@@ -616,28 +726,23 @@ go get github.com/schigh/health/v2/reporter/prometheus</code></pre>
 
 <footer>
   <p>health/v2 is open source under the Apache 2.0 license.</p>
-  <p><a href="https://github.com/schigh/health">GitHub</a> · <a href="https://pkg.go.dev/github.com/schigh/health/v2">pkg.go.dev</a></p>
+  <p><a href="https://github.com/schigh/health">GitHub</a> · <a href="https://pkg.go.dev/github.com/schigh/health/v2">pkg.go.dev</a> · <a href="https://github.com/schigh/health/tree/main/e2e">E2E Tests</a></p>
 </footer>
 
 <script>
-// Sticky nav background on scroll
 const nav = document.getElementById('nav');
 window.addEventListener('scroll', () => {
   nav.classList.toggle('scrolled', window.scrollY > 50);
 });
 
-// Smooth scroll for nav links
 document.querySelectorAll('a[href^="#"]').forEach(a => {
   a.addEventListener('click', e => {
     e.preventDefault();
     const target = document.querySelector(a.getAttribute('href'));
-    if (target) {
-      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
 });
 
-// Active nav link highlighting
 const sections = document.querySelectorAll('section[id]');
 const navLinks = document.querySelectorAll('.nav-links a[href^="#"]');
 window.addEventListener('scroll', () => {

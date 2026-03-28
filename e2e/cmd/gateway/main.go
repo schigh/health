@@ -21,7 +21,7 @@ func main() {
 	mgr := std.Manager{Logger: health.DefaultLogger()}
 
 	if err := mgr.AddCheck("orders-api",
-		checkhttp.NewChecker("orders-api", "http://orders-svc:8182/health/ready",
+		checkhttp.NewChecker("orders-api", "http://orders-svc:8182/readyz",
 			checkhttp.WithTimeout(3*time.Second),
 		),
 		health.WithCheckFrequency(health.CheckAtInterval, 5*time.Second, 0),

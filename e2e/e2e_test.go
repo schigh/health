@@ -151,7 +151,7 @@ func TestProbesHealthy(t *testing.T) {
 			url, cleanup := portForward(t, svc.name, svc.port)
 			defer cleanup()
 
-			for _, path := range []string{"/health/live", "/health/ready", "/health/startup"} {
+			for _, path := range []string{"/livez", "/readyz", "/healthz"} {
 				code, _ := httpGet(t, url+path)
 				if code != 200 {
 					t.Errorf("%s%s: expected 200, got %d", svc.name, path, code)
@@ -169,9 +169,9 @@ func TestSelfDescribingJSON(t *testing.T) {
 	url, cleanup := portForward(t, "orders-svc", 8182)
 	defer cleanup()
 
-	code, body := httpGet(t, url+"/health/ready")
+	code, body := httpGet(t, url+"/readyz")
 	if code != 200 {
-		t.Fatalf("orders /health/ready: expected 200, got %d", code)
+		t.Fatalf("orders /readyz: expected 200, got %d", code)
 	}
 
 	var checks map[string]json.RawMessage
@@ -389,7 +389,7 @@ func TestRedisFailure_ReadinessNotLiveness(t *testing.T) {
 	defer cleanup()
 
 	// Verify healthy baseline
-	code, _ := httpGet(t, ordersURL+"/health/ready")
+	code, _ := httpGet(t, ordersURL+"/readyz")
 	if code != 200 {
 		t.Fatalf("orders should be ready initially, got %d", code)
 	}
@@ -400,14 +400,14 @@ func TestRedisFailure_ReadinessNotLiveness(t *testing.T) {
 
 	// Wait for readiness to fail
 	t.Log("Waiting for orders readiness to fail...")
-	ok, lastCode := pollForStatus(ordersURL+"/health/ready", 503, 30*time.Second)
+	ok, lastCode := pollForStatus(ordersURL+"/readyz", 503, 30*time.Second)
 	if !ok {
 		t.Fatalf("orders readiness did not go 503, last code: %d", lastCode)
 	}
 	t.Log("Orders readiness is 503 (correct)")
 
 	// Liveness should STILL be 200 (Redis only affects readiness)
-	liveCode, _ := httpGet(t, ordersURL+"/health/live")
+	liveCode, _ := httpGet(t, ordersURL+"/livez")
 	if liveCode != 200 {
 		t.Errorf("orders liveness should still be 200 during Redis outage, got %d", liveCode)
 	}
@@ -419,7 +419,7 @@ func TestRedisFailure_ReadinessNotLiveness(t *testing.T) {
 
 	// Wait for recovery
 	t.Log("Waiting for orders to recover...")
-	ok, lastCode = pollForStatus(ordersURL+"/health/ready", 200, 30*time.Second)
+	ok, lastCode = pollForStatus(ordersURL+"/readyz", 200, 30*time.Second)
 	if !ok {
 		t.Fatalf("orders did not recover, last code: %d", lastCode)
 	}
@@ -441,9 +441,9 @@ func TestCascadingFailure_Postgres(t *testing.T) {
 
 	// Verify all healthy
 	for _, u := range []string{gwURL, ordersURL, paymentsURL} {
-		code, _ := httpGet(t, u+"/health/ready")
+		code, _ := httpGet(t, u+"/readyz")
 		if code != 200 {
-			t.Fatalf("expected 200 at %s/health/ready, got %d", u, code)
+			t.Fatalf("expected 200 at %s/readyz, got %d", u, code)
 		}
 	}
 
@@ -453,7 +453,7 @@ func TestCascadingFailure_Postgres(t *testing.T) {
 
 	// Payments should go down (postgres has liveness impact)
 	t.Log("Waiting for payments to detect Postgres failure...")
-	ok, lastCode := pollForStatus(paymentsURL+"/health/live", 503, 30*time.Second)
+	ok, lastCode := pollForStatus(paymentsURL+"/livez", 503, 30*time.Second)
 	if !ok {
 		t.Fatalf("payments liveness did not go 503, last code: %d", lastCode)
 	}
@@ -461,7 +461,7 @@ func TestCascadingFailure_Postgres(t *testing.T) {
 
 	// Orders should go down (postgres has liveness impact)
 	t.Log("Waiting for orders to detect Postgres failure...")
-	ok, lastCode = pollForStatus(ordersURL+"/health/live", 503, 30*time.Second)
+	ok, lastCode = pollForStatus(ordersURL+"/livez", 503, 30*time.Second)
 	if !ok {
 		t.Fatalf("orders liveness did not go 503, last code: %d", lastCode)
 	}
@@ -470,7 +470,7 @@ func TestCascadingFailure_Postgres(t *testing.T) {
 	// Gateway should see orders down (orders HTTP check will fail because
 	// orders' readiness endpoint returns 503)
 	t.Log("Waiting for gateway to detect cascade...")
-	ok, lastCode = pollForStatus(gwURL+"/health/ready", 503, 30*time.Second)
+	ok, lastCode = pollForStatus(gwURL+"/readyz", 503, 30*time.Second)
 	if !ok {
 		// Gateway might still be 200 if the HTTP check to orders hasn't run yet
 		// or if orders is still responding (just with 503 which our HTTP checker
@@ -486,21 +486,21 @@ func TestCascadingFailure_Postgres(t *testing.T) {
 
 	// Wait for full recovery chain: postgres → payments + orders → gateway
 	t.Log("Waiting for payments recovery...")
-	ok, _ = pollForStatus(paymentsURL+"/health/ready", 200, 45*time.Second)
+	ok, _ = pollForStatus(paymentsURL+"/readyz", 200, 45*time.Second)
 	if !ok {
 		t.Fatal("payments did not recover")
 	}
 	t.Log("Payments recovered")
 
 	t.Log("Waiting for orders recovery...")
-	ok, _ = pollForStatus(ordersURL+"/health/ready", 200, 45*time.Second)
+	ok, _ = pollForStatus(ordersURL+"/readyz", 200, 45*time.Second)
 	if !ok {
 		t.Fatal("orders did not recover")
 	}
 	t.Log("Orders recovered")
 
 	t.Log("Waiting for gateway recovery...")
-	ok, _ = pollForStatus(gwURL+"/health/ready", 200, 45*time.Second)
+	ok, _ = pollForStatus(gwURL+"/readyz", 200, 45*time.Second)
 	if !ok {
 		t.Fatal("gateway did not recover")
 	}
@@ -650,7 +650,7 @@ func TestManifestStatusDuringFailure(t *testing.T) {
 
 	// Wait for manifest to go back to "pass"
 	t.Log("Waiting for manifest recovery...")
-	ok, _ := pollForStatus(ordersURL+"/health/ready", 200, 30*time.Second)
+	ok, _ := pollForStatus(ordersURL+"/readyz", 200, 30*time.Second)
 	if !ok {
 		t.Fatal("orders did not recover")
 	}

@@ -20,19 +20,19 @@ spec:
             - containerPort: 8181
           livenessProbe:
             httpGet:
-              path: /health/live
+              path: /livez
               port: 8181
             initialDelaySeconds: 5
             periodSeconds: 10
           readinessProbe:
             httpGet:
-              path: /health/ready
+              path: /readyz
               port: 8181
             initialDelaySeconds: 5
             periodSeconds: 10
           startupProbe:
             httpGet:
-              path: /health/startup
+              path: /healthz
               port: 8181
             failureThreshold: 30
             periodSeconds: 2

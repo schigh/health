@@ -72,9 +72,9 @@ func newFromConfig(cfg Config) *Reporter {
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc(fmt.Sprintf("/health/%s", strings.TrimPrefix(cfg.LivenessRoute, "/")), reporter.reportLiveness)
-	mux.HandleFunc(fmt.Sprintf("/health/%s", strings.TrimPrefix(cfg.ReadinessRoute, "/")), reporter.reportReadiness)
-	mux.HandleFunc(fmt.Sprintf("/health/%s", strings.TrimPrefix(cfg.StartupRoute, "/")), reporter.reportStartup)
+	mux.HandleFunc("/"+strings.TrimPrefix(cfg.LivenessRoute, "/"), reporter.reportLiveness)
+	mux.HandleFunc("/"+strings.TrimPrefix(cfg.ReadinessRoute, "/"), reporter.reportReadiness)
+	mux.HandleFunc("/"+strings.TrimPrefix(cfg.StartupRoute, "/"), reporter.reportStartup)
 	mux.HandleFunc("/.well-known/health", reporter.reportManifest)
 
 	var handler http.Handler

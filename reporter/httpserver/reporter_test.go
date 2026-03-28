@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"path"
 	"testing"
 	"time"
 
@@ -30,9 +29,9 @@ func TestReporter(t *testing.T) {
 	reporter := httpserver.NewReporter(httpserver.Config{
 		Addr:           "0.0.0.0",
 		Port:           8181,
-		LivenessRoute:  "/live",
-		ReadinessRoute: "/ready",
-		StartupRoute:   "/startup",
+		LivenessRoute:  "/livez",
+		ReadinessRoute: "/readyz",
+		StartupRoute:   "/healthz",
 	})
 
 	// context to close test
@@ -87,7 +86,7 @@ func mkTests(reporter *httpserver.Reporter, client *http.Client) []test {
 			client:   client,
 			measureState: func(_ context.Context, t *testing.T, client *http.Client) {
 				{
-					sc, hcMap := fetchHealth(t, client, "live")
+					sc, hcMap := fetchHealth(t, client, "livez")
 					expectStatus(t, sc, http.StatusServiceUnavailable)
 					evalHealthCheckMap(t, hcMap, func(m map[string]checkJSON) error {
 						if len(m) != 0 {
@@ -98,7 +97,7 @@ func mkTests(reporter *httpserver.Reporter, client *http.Client) []test {
 				}
 
 				{
-					sc, hcMap := fetchHealth(t, client, "ready")
+					sc, hcMap := fetchHealth(t, client, "readyz")
 					expectStatus(t, sc, http.StatusServiceUnavailable)
 					evalHealthCheckMap(t, hcMap, func(m map[string]checkJSON) error {
 						if len(m) != 0 {
@@ -119,7 +118,7 @@ func mkTests(reporter *httpserver.Reporter, client *http.Client) []test {
 			pauseBeforeMeasure: 10 * time.Millisecond,
 			measureState: func(_ context.Context, t *testing.T, client *http.Client) {
 				{
-					sc, hcMap := fetchHealth(t, client, "live")
+					sc, hcMap := fetchHealth(t, client, "livez")
 					expectStatus(t, sc, http.StatusOK)
 					evalHealthCheckMap(t, hcMap, func(m map[string]checkJSON) error {
 						if len(m) != 0 {
@@ -130,7 +129,7 @@ func mkTests(reporter *httpserver.Reporter, client *http.Client) []test {
 				}
 
 				{
-					sc, hcMap := fetchHealth(t, client, "ready")
+					sc, hcMap := fetchHealth(t, client, "readyz")
 					expectStatus(t, sc, http.StatusServiceUnavailable)
 					evalHealthCheckMap(t, hcMap, func(m map[string]checkJSON) error {
 						if len(m) != 0 {
@@ -151,7 +150,7 @@ func mkTests(reporter *httpserver.Reporter, client *http.Client) []test {
 			pauseBeforeMeasure: 10 * time.Millisecond,
 			measureState: func(_ context.Context, t *testing.T, client *http.Client) {
 				{
-					sc, hcMap := fetchHealth(t, client, "live")
+					sc, hcMap := fetchHealth(t, client, "livez")
 					expectStatus(t, sc, http.StatusOK)
 					evalHealthCheckMap(t, hcMap, func(m map[string]checkJSON) error {
 						if len(m) != 0 {
@@ -162,7 +161,7 @@ func mkTests(reporter *httpserver.Reporter, client *http.Client) []test {
 				}
 
 				{
-					sc, hcMap := fetchHealth(t, client, "ready")
+					sc, hcMap := fetchHealth(t, client, "readyz")
 					expectStatus(t, sc, http.StatusOK)
 					evalHealthCheckMap(t, hcMap, func(m map[string]checkJSON) error {
 						if len(m) != 0 {
@@ -188,7 +187,7 @@ func mkTests(reporter *httpserver.Reporter, client *http.Client) []test {
 			pauseBeforeMeasure: 10 * time.Millisecond,
 			measureState: func(_ context.Context, t *testing.T, client *http.Client) {
 				{
-					sc, hcMap := fetchHealth(t, client, "live")
+					sc, hcMap := fetchHealth(t, client, "livez")
 					expectStatus(t, sc, http.StatusOK)
 					evalHealthCheckMap(t, hcMap, func(m map[string]checkJSON) error {
 						if len(m) != 1 {
@@ -214,7 +213,7 @@ func mkTests(reporter *httpserver.Reporter, client *http.Client) []test {
 			pauseBeforeMeasure: 10 * time.Millisecond,
 			measureState: func(_ context.Context, t *testing.T, client *http.Client) {
 				{
-					sc, hcMap := fetchHealth(t, client, "live")
+					sc, hcMap := fetchHealth(t, client, "livez")
 					expectStatus(t, sc, http.StatusOK)
 					evalHealthCheckMap(t, hcMap, func(m map[string]checkJSON) error {
 						if len(m) != 1 {
@@ -240,7 +239,7 @@ func mkTests(reporter *httpserver.Reporter, client *http.Client) []test {
 			pauseBeforeMeasure: 10 * time.Millisecond,
 			measureState: func(_ context.Context, t *testing.T, client *http.Client) {
 				{
-					sc, hcMap := fetchHealth(t, client, "live")
+					sc, hcMap := fetchHealth(t, client, "livez")
 					expectStatus(t, sc, http.StatusOK)
 					evalHealthCheckMap(t, hcMap, func(m map[string]checkJSON) error {
 						if len(m) != 2 {
@@ -266,7 +265,7 @@ func mkTests(reporter *httpserver.Reporter, client *http.Client) []test {
 			pauseBeforeMeasure: 10 * time.Millisecond,
 			measureState: func(_ context.Context, t *testing.T, client *http.Client) {
 				{
-					sc, hcMap := fetchHealth(t, client, "live")
+					sc, hcMap := fetchHealth(t, client, "livez")
 					expectStatus(t, sc, http.StatusOK)
 					evalHealthCheckMap(t, hcMap, func(m map[string]checkJSON) error {
 						if len(m) != 3 {
@@ -305,11 +304,11 @@ func mkTests(reporter *httpserver.Reporter, client *http.Client) []test {
 			pauseBeforeMeasure: 10 * time.Millisecond,
 			measureState: func(_ context.Context, t *testing.T, client *http.Client) {
 				{
-					sc, _ := fetchHealth(t, client, "live")
+					sc, _ := fetchHealth(t, client, "livez")
 					expectStatus(t, sc, http.StatusOK)
 				}
 				{
-					sc, _ := fetchHealth(t, client, "ready")
+					sc, _ := fetchHealth(t, client, "readyz")
 					expectStatus(t, sc, http.StatusServiceUnavailable)
 				}
 			},
@@ -323,7 +322,7 @@ func mkTests(reporter *httpserver.Reporter, client *http.Client) []test {
 			},
 			pauseBeforeMeasure: 10 * time.Millisecond,
 			measureState: func(_ context.Context, t *testing.T, client *http.Client) {
-				sc, _ := fetchHealth(t, client, "ready")
+				sc, _ := fetchHealth(t, client, "readyz")
 				expectStatus(t, sc, http.StatusOK)
 			},
 		},
@@ -337,11 +336,11 @@ func mkTests(reporter *httpserver.Reporter, client *http.Client) []test {
 			pauseBeforeMeasure: 10 * time.Millisecond,
 			measureState: func(_ context.Context, t *testing.T, client *http.Client) {
 				{
-					sc, _ := fetchHealth(t, client, "live")
+					sc, _ := fetchHealth(t, client, "livez")
 					expectStatus(t, sc, http.StatusServiceUnavailable)
 				}
 				{
-					sc, _ := fetchHealth(t, client, "ready")
+					sc, _ := fetchHealth(t, client, "readyz")
 					expectStatus(t, sc, http.StatusOK)
 				}
 			},
@@ -356,11 +355,11 @@ func mkTests(reporter *httpserver.Reporter, client *http.Client) []test {
 			pauseBeforeMeasure: 10 * time.Millisecond,
 			measureState: func(_ context.Context, t *testing.T, client *http.Client) {
 				{
-					sc, _ := fetchHealth(t, client, "live")
+					sc, _ := fetchHealth(t, client, "livez")
 					expectStatus(t, sc, http.StatusServiceUnavailable)
 				}
 				{
-					sc, _ := fetchHealth(t, client, "ready")
+					sc, _ := fetchHealth(t, client, "readyz")
 					expectStatus(t, sc, http.StatusServiceUnavailable)
 				}
 			},
@@ -376,11 +375,11 @@ func mkTests(reporter *httpserver.Reporter, client *http.Client) []test {
 			pauseBeforeMeasure: 10 * time.Millisecond,
 			measureState: func(_ context.Context, t *testing.T, client *http.Client) {
 				{
-					sc, _ := fetchHealth(t, client, "live")
+					sc, _ := fetchHealth(t, client, "livez")
 					expectStatus(t, sc, http.StatusOK)
 				}
 				{
-					sc, _ := fetchHealth(t, client, "ready")
+					sc, _ := fetchHealth(t, client, "readyz")
 					expectStatus(t, sc, http.StatusOK)
 				}
 			},
@@ -390,7 +389,7 @@ func mkTests(reporter *httpserver.Reporter, client *http.Client) []test {
 			reporter: reporter,
 			client:   client,
 			measureState: func(_ context.Context, t *testing.T, client *http.Client) {
-				sc, _ := fetchHealth(t, client, "startup")
+				sc, _ := fetchHealth(t, client, "healthz")
 				expectStatus(t, sc, http.StatusServiceUnavailable)
 			},
 		},
@@ -403,7 +402,7 @@ func mkTests(reporter *httpserver.Reporter, client *http.Client) []test {
 			},
 			pauseBeforeMeasure: 10 * time.Millisecond,
 			measureState: func(_ context.Context, t *testing.T, client *http.Client) {
-				sc, _ := fetchHealth(t, client, "startup")
+				sc, _ := fetchHealth(t, client, "healthz")
 				expectStatus(t, sc, http.StatusOK)
 			},
 		},
@@ -425,7 +424,7 @@ func fetchHealth(t *testing.T, client *http.Client, pathSuffix string) (int, map
 	uri := url.URL{
 		Scheme: "http",
 		Host:   "0.0.0.0:8181",
-		Path:   path.Join("health", pathSuffix),
+		Path:   "/" + pathSuffix,
 	}
 
 	req, reqErr := http.NewRequestWithContext(context.Background(), http.MethodGet, uri.String(), http.NoBody)
