@@ -592,6 +592,13 @@ func TestManifestStatusDuringFailure(t *testing.T) {
 	ordersURL, cleanup := portForward(t, "orders-svc", 8182)
 	defer cleanup()
 
+	// Wait for system to be fully healthy (previous tests may have left deps recovering)
+	t.Log("Waiting for orders to be fully ready...")
+	ok, _ := pollForStatus(ordersURL+"/readyz", 200, 30*time.Second)
+	if !ok {
+		t.Fatal("orders did not become ready in time")
+	}
+
 	// Verify healthy manifest
 	code, body := httpGet(t, ordersURL+"/.well-known/health")
 	if code != 200 {
@@ -650,7 +657,7 @@ func TestManifestStatusDuringFailure(t *testing.T) {
 
 	// Wait for manifest to go back to "pass"
 	t.Log("Waiting for manifest recovery...")
-	ok, _ := pollForStatus(ordersURL+"/readyz", 200, 30*time.Second)
+	ok, _ = pollForStatus(ordersURL+"/readyz", 200, 30*time.Second)
 	if !ok {
 		t.Fatal("orders did not recover")
 	}
