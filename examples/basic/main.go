@@ -30,7 +30,8 @@ func main() {
 			}
 		}),
 		health.WithCheckFrequency(health.CheckAtInterval, 5*time.Second, 0),
-		health.WithCheckImpact(true, true),
+		health.WithLivenessImpact(),
+		health.WithReadinessImpact(),
 	)
 
 	// add a reporter

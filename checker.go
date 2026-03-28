@@ -21,6 +21,8 @@ type AddCheckOptions struct {
 	AffectsLiveness  bool
 	AffectsReadiness bool
 	AffectsStartup   bool
+	Group            string
+	ComponentType    string
 }
 
 // AddCheckOption is a functional option for adding a Checker to a health manager.
@@ -59,22 +61,42 @@ func WithCheckFrequency(f CheckFrequency, interval, delay time.Duration) AddChec
 	}
 }
 
-// WithCheckImpact tells the health instance that a healthcheck affects the liveness, readiness, or startup
-// of the application. Liveness and readiness are ways Kubernetes determines the fitness of a pod.
-// If liveness is affected by the failing health check, then readiness is also affected. By default,
-// application liveness, readiness, and startup are not affected by a health check.
-func WithCheckImpact(liveness, readiness bool) AddCheckOption {
+// WithLivenessImpact marks a health check as affecting the liveness of the application.
+// If a check that affects liveness fails, readiness is also affected.
+func WithLivenessImpact() AddCheckOption {
 	return func(o *AddCheckOptions) {
-		o.AffectsLiveness = liveness
-		o.AffectsReadiness = readiness
+		o.AffectsLiveness = true
+	}
+}
+
+// WithReadinessImpact marks a health check as affecting the readiness of the application.
+func WithReadinessImpact() AddCheckOption {
+	return func(o *AddCheckOptions) {
+		o.AffectsReadiness = true
 	}
 }
 
 // WithStartupImpact marks a health check as affecting startup probes. Startup checks
 // must all pass before liveness and readiness probes are evaluated. Once all startup
 // checks pass, startup is considered complete and is not re-evaluated.
-func WithStartupImpact(startup bool) AddCheckOption {
+func WithStartupImpact() AddCheckOption {
 	return func(o *AddCheckOptions) {
-		o.AffectsStartup = startup
+		o.AffectsStartup = true
+	}
+}
+
+// WithGroup assigns a logical group to a health check (e.g., "database", "cache", "external").
+// Groups are included in self-describing health endpoints and can be used for filtering.
+func WithGroup(group string) AddCheckOption {
+	return func(o *AddCheckOptions) {
+		o.Group = group
+	}
+}
+
+// WithComponentType assigns a component type hint to a health check (e.g., "datastore", "http", "tcp").
+// Component types are included in self-describing health endpoints.
+func WithComponentType(ct string) AddCheckOption {
+	return func(o *AddCheckOptions) {
+		o.ComponentType = ct
 	}
 }

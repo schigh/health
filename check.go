@@ -37,6 +37,8 @@ type CheckResult struct {
 	AffectsLiveness  bool
 	AffectsReadiness bool
 	AffectsStartup   bool
+	Group            string
+	ComponentType    string
 	Error            error
 	ErrorSince       time.Time
 	Duration         time.Duration
