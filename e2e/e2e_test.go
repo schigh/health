@@ -662,3 +662,164 @@ func TestManifestStatusDuringFailure(t *testing.T) {
 	}
 	t.Log("Manifest status recovered to 'pass'")
 }
+
+// ---------------------------------------------------------------------------
+// Test 9: Individual check by name returns correct status
+// ---------------------------------------------------------------------------
+
+func TestIndividualCheckByName(t *testing.T) {
+	ordersURL, cleanup := portForward(t, "orders-svc", 8182)
+	defer cleanup()
+
+	// /livez/postgres should return 200 with [+]postgres ok
+	code, body := httpGet(t, ordersURL+"/livez/postgres")
+	if code != 200 {
+		t.Fatalf("/livez/postgres: expected 200, got %d", code)
+	}
+	if !strings.Contains(string(body), "[+]postgres ok") {
+		t.Errorf("expected '[+]postgres ok', got %q", body)
+	}
+	t.Log("/livez/postgres: 200 [+]postgres ok")
+
+	// /readyz/redis should return 200 (redis is healthy)
+	code, body = httpGet(t, ordersURL+"/readyz/redis")
+	if code != 200 {
+		t.Fatalf("/readyz/redis: expected 200, got %d", code)
+	}
+	if !strings.Contains(string(body), "[+]redis ok") {
+		t.Errorf("expected '[+]redis ok', got %q", body)
+	}
+	t.Log("/readyz/redis: 200 [+]redis ok")
+
+	// /livez/nonexistent should return 404
+	code, _, err := httpGetSafe(ordersURL + "/livez/nonexistent")
+	if err != nil {
+		t.Fatalf("/livez/nonexistent: %v", err)
+	}
+	if code != 404 {
+		t.Errorf("/livez/nonexistent: expected 404, got %d", code)
+	}
+	t.Log("/livez/nonexistent: 404 (correct)")
+}
+
+// ---------------------------------------------------------------------------
+// Test 10: Verbose output lists all checks with status
+// ---------------------------------------------------------------------------
+
+func TestVerboseOutput(t *testing.T) {
+	ordersURL, cleanup := portForward(t, "orders-svc", 8182)
+	defer cleanup()
+
+	// /readyz?verbose should list all 3 checks
+	code, body, err := httpGetSafe(ordersURL + "/readyz?verbose")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(body)
+
+	if code != 200 {
+		t.Fatalf("/readyz?verbose: expected 200 when all healthy, got %d\n%s", code, text)
+	}
+
+	// Should contain all 3 checks
+	for _, name := range []string{"postgres", "redis", "payments-api"} {
+		if !strings.Contains(text, "[+]"+name+" ok") {
+			t.Errorf("verbose output missing '[+]%s ok', got:\n%s", name, text)
+		}
+	}
+	t.Logf("Verbose output has all 3 checks:\n%s", text)
+}
+
+// ---------------------------------------------------------------------------
+// Test 11: Individual check shows failure during Redis outage
+// ---------------------------------------------------------------------------
+
+func TestIndividualCheckDuringFailure(t *testing.T) {
+	ordersURL, cleanup := portForward(t, "orders-svc", 8182)
+	defer cleanup()
+
+	// Kill Redis
+	t.Log("Scaling Redis to 0...")
+	ensureScale(t, "redis", 0)
+
+	// Wait for the redis individual check to go unhealthy
+	t.Log("Waiting for /readyz/redis to return 503...")
+	ok, lastCode := pollForStatus(ordersURL+"/readyz/redis", 503, 30*time.Second)
+	if !ok {
+		t.Fatalf("/readyz/redis did not go 503, last code: %d", lastCode)
+	}
+	t.Log("/readyz/redis: 503 (correct)")
+
+	// postgres individual check should still be 200
+	code, _, err := httpGetSafe(ordersURL + "/livez/postgres")
+	if err != nil {
+		t.Fatalf("/livez/postgres: %v", err)
+	}
+	if code != 200 {
+		t.Errorf("/livez/postgres should still be 200 during Redis outage, got %d", code)
+	}
+	t.Log("/livez/postgres: still 200 (correct, Redis failure is isolated)")
+
+	// Restore Redis
+	t.Log("Restoring Redis...")
+	ensureScale(t, "redis", 1)
+
+	// Wait for recovery
+	ok, _ = pollForStatus(ordersURL+"/readyz/redis", 200, 30*time.Second)
+	if !ok {
+		t.Fatal("/readyz/redis did not recover")
+	}
+	t.Log("/readyz/redis: recovered to 200")
+}
+
+// ---------------------------------------------------------------------------
+// Test 12: Exclude parameter removes check from evaluation
+// ---------------------------------------------------------------------------
+
+func TestVerboseExclude(t *testing.T) {
+	ordersURL, cleanup := portForward(t, "orders-svc", 8182)
+	defer cleanup()
+
+	// Kill Redis
+	t.Log("Scaling Redis to 0...")
+	ensureScale(t, "redis", 0)
+
+	// Wait for aggregate readyz to fail
+	t.Log("Waiting for /readyz to return 503...")
+	ok, _ := pollForStatus(ordersURL+"/readyz", 503, 30*time.Second)
+	if !ok {
+		t.Fatal("/readyz did not go 503")
+	}
+
+	// /readyz?verbose&exclude=redis should return 200 (only postgres + payments, both healthy)
+	t.Log("Testing /readyz?verbose&exclude=redis...")
+	deadline := time.Now().Add(15 * time.Second)
+	passed := false
+	var lastBody string
+	for time.Now().Before(deadline) {
+		code, body, err := httpGetSafe(ordersURL + "/readyz?verbose&exclude=redis")
+		if err == nil {
+			lastBody = string(body)
+			if code == 200 {
+				passed = true
+				break
+			}
+		}
+		time.Sleep(2 * time.Second)
+	}
+	if !passed {
+		t.Fatalf("/readyz?verbose&exclude=redis: expected 200, got body:\n%s", lastBody)
+	}
+
+	// Verify redis is not in the output
+	if strings.Contains(lastBody, "redis") {
+		t.Errorf("excluded redis should not appear in verbose output:\n%s", lastBody)
+	}
+	t.Logf("Exclude works correctly:\n%s", lastBody)
+
+	// Restore Redis
+	t.Log("Restoring Redis...")
+	ensureScale(t, "redis", 1)
+	pollForStatus(ordersURL+"/readyz", 200, 30*time.Second)
+	t.Log("System recovered")
+}
