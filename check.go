@@ -39,6 +39,7 @@ type CheckResult struct {
 	AffectsStartup   bool
 	Group            string
 	ComponentType    string
+	DependsOn        []string
 	Error            error
 	ErrorSince       time.Time
 	Duration         time.Duration

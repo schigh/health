@@ -11,6 +11,8 @@ type Config struct {
 	StartupRoute   string
 	Logger         health.Logger
 	Middleware     []Middleware
+	ServiceName    string
+	ServiceVersion string
 }
 
 // Option is a functional option for configuring the HTTP reporter.
@@ -50,6 +52,16 @@ func WithLogger(l health.Logger) Option {
 // The first middleware in the list is the first to see the request.
 func WithMiddleware(mw ...Middleware) Option {
 	return func(c *Config) { c.Middleware = append(c.Middleware, mw...) }
+}
+
+// WithServiceName sets the service name for the /.well-known/health manifest.
+func WithServiceName(name string) Option {
+	return func(c *Config) { c.ServiceName = name }
+}
+
+// WithServiceVersion sets the service version for the /.well-known/health manifest.
+func WithServiceVersion(version string) Option {
+	return func(c *Config) { c.ServiceVersion = version }
 }
 
 func defaultConfig() Config {

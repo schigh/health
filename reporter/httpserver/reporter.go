@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/schigh/health/v2"
+	"github.com/schigh/health/v2/discovery"
 )
 
 const (
@@ -31,9 +32,11 @@ type Reporter struct {
 	startup uint32
 	hcCache *cache
 	hcMx    sync.RWMutex
-	hcs     map[string]*health.CheckResult
-	server  *http.Server
-	logger  health.Logger
+	hcs         map[string]*health.CheckResult
+	server      *http.Server
+	logger      health.Logger
+	serviceName string
+	serviceVer  string
 }
 
 // New creates an HTTP reporter with functional options.
@@ -58,7 +61,9 @@ func NewReporter(cfg Config) *Reporter {
 
 func newFromConfig(cfg Config) *Reporter {
 	reporter := Reporter{
-		hcCache: mkCache(),
+		hcCache:     mkCache(),
+		serviceName: cfg.ServiceName,
+		serviceVer:  cfg.ServiceVersion,
 	}
 
 	reporter.logger = cfg.Logger
@@ -70,6 +75,7 @@ func newFromConfig(cfg Config) *Reporter {
 	mux.HandleFunc(fmt.Sprintf("/health/%s", strings.TrimPrefix(cfg.LivenessRoute, "/")), reporter.reportLiveness)
 	mux.HandleFunc(fmt.Sprintf("/health/%s", strings.TrimPrefix(cfg.ReadinessRoute, "/")), reporter.reportReadiness)
 	mux.HandleFunc(fmt.Sprintf("/health/%s", strings.TrimPrefix(cfg.StartupRoute, "/")), reporter.reportStartup)
+	mux.HandleFunc("/.well-known/health", reporter.reportManifest)
 
 	var handler http.Handler
 	handler = http.TimeoutHandler(mux, 60*time.Second, "the request timed out")
@@ -224,6 +230,60 @@ func (r *Reporter) reportStartup(rw http.ResponseWriter, rq *http.Request) {
 	rw.Header().Set("Content-Type", "application/json")
 	rw.WriteHeader(statusCode)
 	_, _ = rw.Write(data)
+}
+
+// reportManifest serves the /.well-known/health discovery manifest.
+func (r *Reporter) reportManifest(rw http.ResponseWriter, rq *http.Request) {
+	if atomic.LoadUint32(&r.running) == 0 {
+		r.reportNotRunning(rw, rq)
+		return
+	}
+
+	r.hcMx.RLock()
+	defer r.hcMx.RUnlock()
+
+	status := "pass"
+	if atomic.LoadUint32(&r.live) == 0 {
+		status = "fail"
+	} else if atomic.LoadUint32(&r.ready) == 0 {
+		status = "warn"
+	}
+
+	checks := make([]discovery.CheckEntry, 0, len(r.hcs))
+	for _, hc := range r.hcs {
+		entry := discovery.CheckEntry{
+			Name:             hc.Name,
+			Status:           hc.Status.String(),
+			Group:            hc.Group,
+			ComponentType:    hc.ComponentType,
+			AffectsLiveness:  hc.AffectsLiveness,
+			AffectsReadiness: hc.AffectsReadiness,
+			AffectsStartup:   hc.AffectsStartup,
+			DependsOn:        hc.DependsOn,
+		}
+		if hc.Duration > 0 {
+			entry.Duration = hc.Duration.String()
+		}
+		if !hc.Timestamp.IsZero() {
+			entry.LastCheck = hc.Timestamp.Format(time.RFC3339)
+		}
+		if hc.Error != nil {
+			entry.Error = hc.Error.Error()
+		}
+		checks = append(checks, entry)
+	}
+
+	manifest := discovery.Manifest{
+		Service:   r.serviceName,
+		Version:   r.serviceVer,
+		Status:    status,
+		Checks:    checks,
+		Timestamp: time.Now(),
+	}
+
+	rw.Header().Set("Content-Type", "application/json")
+	rw.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(rw).Encode(manifest)
 }
 
 // reportNotRunning should only occur immediately at startup and right before

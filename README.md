@@ -233,6 +233,62 @@ startupProbe:
   periodSeconds: 2
 ```
 
+## Service Discovery
+
+Every service using this library can expose a `/.well-known/health` manifest endpoint that describes its health checks, dependencies, and current state. Other services can discover this manifest and build transitive dependency graphs with zero infrastructure.
+
+```go
+// Enable the manifest endpoint
+reporter := httpserver.New(
+    httpserver.WithServiceName("orders-api"),
+    httpserver.WithServiceVersion("1.2.3"),
+)
+
+// Declare dependencies between checks
+mgr.AddCheck("payments", httpChecker,
+    health.WithDependsOn("http://payments:8181"),
+)
+```
+
+### Discovering the graph
+
+```go
+// Fetch a single service's manifest
+manifest, _ := discovery.FetchManifest(ctx, "http://orders:8181")
+
+// Walk the full dependency graph (BFS, follows HTTP DependsOn entries)
+graph, _ := discovery.DiscoverGraph(ctx, "http://api-gateway:8181")
+
+// Render as Mermaid or Graphviz
+fmt.Println(graph.Mermaid())
+fmt.Println(graph.DOT())
+```
+
+The manifest at `/.well-known/health` returns:
+
+```json
+{
+  "service": "orders-api",
+  "version": "1.2.3",
+  "status": "pass",
+  "checks": [
+    {
+      "name": "postgres",
+      "status": "healthy",
+      "group": "database",
+      "componentType": "datastore",
+      "duration": "1.2ms"
+    },
+    {
+      "name": "payments",
+      "status": "healthy",
+      "dependsOn": ["http://payments:8181"]
+    }
+  ],
+  "timestamp": "2026-03-28T20:00:00Z"
+}
+```
+
 ## Architecture
 
 ```

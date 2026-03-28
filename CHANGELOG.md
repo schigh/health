@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.4.0.0] - 2026-03-28
+
+### Added
+- `discovery` package for zero-infrastructure dependency graph discovery
+  - `Manifest` type describing a service's health checks, dependencies, and state
+  - `FetchManifest()` fetches a single service's manifest from `/.well-known/health`
+  - `DiscoverGraph()` BFS traversal of HTTP DependsOn entries across services
+  - `Graph.Mermaid()` and `Graph.DOT()` render dependency graphs as diagrams
+- `/.well-known/health` manifest endpoint on the HTTP reporter (RFC 8615 convention)
+- `WithDependsOn()` option to declare check dependencies
+- `DependsOn` field on `CheckResult` for dependency flow through reporters
+- `WithServiceName()` and `WithServiceVersion()` options on HTTP reporter
+- README updated with Service Discovery section
+
 ## [2.3.0.0] - 2026-03-28
 
 ### Added

@@ -366,6 +366,7 @@ func applyCheckOptions(hc *health.CheckResult, name string, opts *health.AddChec
 	hc.AffectsStartup = opts.AffectsStartup
 	hc.Group = opts.Group
 	hc.ComponentType = opts.ComponentType
+	hc.DependsOn = opts.DependsOn
 }
 
 // dispatchIntervalCheck dispatches health checks at a regular interval.
