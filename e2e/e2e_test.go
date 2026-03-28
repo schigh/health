@@ -256,11 +256,12 @@ func TestFailureAndRecovery(t *testing.T) {
 		t.Fatalf("orders should be ready initially, got %d", code)
 	}
 
-	// Kill Redis
-	t.Log("Deleting Redis pod...")
-	kubectl(t, "delete", "pod", "-l", "app=redis", "--grace-period=0", "--force")
+	// Scale Redis to 0 (delete pod prevents recreation by the deployment controller)
+	t.Log("Scaling Redis to 0 replicas...")
+	kubectl(t, "scale", "deployment/redis", "--replicas=0")
+	kubectl(t, "wait", "--for=delete", "pod", "-l", "app=redis", "--timeout=30s")
 
-	// Wait for orders to detect the failure (check interval is 5s)
+	// Wait for orders to detect the failure (check interval is 5s, timeout is 2s)
 	t.Log("Waiting for orders to detect Redis failure...")
 	deadline := time.Now().Add(30 * time.Second)
 	detected := false
@@ -277,10 +278,11 @@ func TestFailureAndRecovery(t *testing.T) {
 		t.Fatal("orders did not detect Redis failure within 30s")
 	}
 
-	// Wait for Redis to come back (deployment will recreate the pod)
-	t.Log("Waiting for Redis recovery...")
-	cmd := exec.Command("kubectl", "wait", "--for=condition=Ready", "pod", "-l", "app=redis", "--timeout=60s")
-	if out, err := cmd.CombinedOutput(); err != nil {
+	// Scale Redis back up
+	t.Log("Scaling Redis back to 1 replica...")
+	kubectl(t, "scale", "deployment/redis", "--replicas=1")
+	waitCmd := exec.Command("kubectl", "wait", "--for=condition=Ready", "pod", "-l", "app=redis", "--timeout=60s")
+	if out, err := waitCmd.CombinedOutput(); err != nil {
 		t.Fatalf("Redis did not recover: %s\n%s", err, out)
 	}
 
