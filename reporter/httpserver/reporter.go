@@ -210,6 +210,12 @@ func (r *Reporter) reportNotRunning(rw http.ResponseWriter, _ *http.Request) {
 // cacheHealthChecks serializes all health checks into JSON and stores the result
 // in the cache. The cache is updated every time a new health check result is reported.
 func (r *Reporter) cacheHealthChecks() {
+	defer func() {
+		if rec := recover(); rec != nil {
+			r.logger.Error("cacheHealthChecks panicked", "error", rec)
+		}
+	}()
+
 	r.hcMx.RLock()
 	defer r.hcMx.RUnlock()
 
@@ -219,8 +225,12 @@ func (r *Reporter) cacheHealthChecks() {
 		AffectsLiveness  bool              `json:"affectsLiveness"`
 		AffectsReadiness bool              `json:"affectsReadiness"`
 		AffectsStartup   bool              `json:"affectsStartup,omitempty"`
+		Group            string            `json:"group,omitempty"`
+		ComponentType    string            `json:"componentType,omitempty"`
 		Error            string            `json:"error,omitempty"`
 		ErrorSince       string            `json:"errorSince,omitempty"`
+		Duration         string            `json:"duration,omitempty"`
+		LastCheck        string            `json:"lastCheck,omitempty"`
 		Metadata         map[string]string `json:"metadata,omitempty"`
 	}
 
@@ -232,6 +242,8 @@ func (r *Reporter) cacheHealthChecks() {
 			AffectsLiveness:  hc.AffectsLiveness,
 			AffectsReadiness: hc.AffectsReadiness,
 			AffectsStartup:   hc.AffectsStartup,
+			Group:            hc.Group,
+			ComponentType:    hc.ComponentType,
 			Metadata:         hc.Metadata,
 		}
 		if hc.Error != nil {
@@ -239,6 +251,12 @@ func (r *Reporter) cacheHealthChecks() {
 		}
 		if !hc.ErrorSince.IsZero() {
 			cj.ErrorSince = hc.ErrorSince.Format(time.RFC3339)
+		}
+		if hc.Duration > 0 {
+			cj.Duration = hc.Duration.String()
+		}
+		if !hc.Timestamp.IsZero() {
+			cj.LastCheck = hc.Timestamp.Format(time.RFC3339)
 		}
 		pl[k] = cj
 	}
