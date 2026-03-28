@@ -23,6 +23,7 @@ type AddCheckOptions struct {
 	AffectsStartup   bool
 	Group            string
 	ComponentType    string
+	DependsOn        []string
 }
 
 // AddCheckOption is a functional option for adding a Checker to a health manager.
@@ -98,5 +99,13 @@ func WithGroup(group string) AddCheckOption {
 func WithComponentType(ct string) AddCheckOption {
 	return func(o *AddCheckOptions) {
 		o.ComponentType = ct
+	}
+}
+
+// WithDependsOn declares that this check depends on other named checks.
+// Used by the discovery protocol to build dependency graphs.
+func WithDependsOn(deps ...string) AddCheckOption {
+	return func(o *AddCheckOptions) {
+		o.DependsOn = append(o.DependsOn, deps...)
 	}
 }
