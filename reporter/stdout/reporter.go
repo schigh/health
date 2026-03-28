@@ -7,7 +7,8 @@ import (
 	"os"
 	"sync/atomic"
 
-	healthpb "github.com/schigh/health/pkg/v1"
+	"github.com/schigh/health"
+	"github.com/schigh/health/internal/syncmap"
 )
 
 var w = os.Stdout //nolint:gochecknoglobals // global ok
@@ -22,18 +23,15 @@ const (
 	no       = "no"
 )
 
-// Reporter reports.
+// Reporter reports health status to stdout.
 type Reporter struct {
 	live         uint32
 	ready        uint32
-	healthChecks *healthCheckMap
+	startup      uint32
+	healthChecks syncmap.Map[string, *health.CheckResult]
 }
 
 func (r *Reporter) Run(_ context.Context) error {
-	if r.healthChecks == nil {
-		r.healthChecks = &healthCheckMap{}
-	}
-
 	return nil
 }
 
@@ -57,7 +55,15 @@ func (r *Reporter) SetReadiness(_ context.Context, b bool) {
 	atomic.StoreUint32(&r.ready, v)
 }
 
-func (r *Reporter) UpdateHealthChecks(_ context.Context, m map[string]*healthpb.Check) {
+func (r *Reporter) SetStartup(_ context.Context, b bool) {
+	var v uint32
+	if b {
+		v = 1
+	}
+	atomic.StoreUint32(&r.startup, v)
+}
+
+func (r *Reporter) UpdateHealthChecks(_ context.Context, m map[string]*health.CheckResult) {
 	r.healthChecks.AbsorbMap(m)
 	r.reportHealthChecks(w)
 }
@@ -78,33 +84,39 @@ func (r *Reporter) reportReadiness(out io.Writer) {
 	_, _ = fmt.Fprintf(out, "|ready:%32s|\n", ready)
 }
 
+func (r *Reporter) reportStartup(out io.Writer) {
+	startup := no
+	if atomic.LoadUint32(&r.startup) == 1 {
+		startup = yes
+	}
+	_, _ = fmt.Fprintf(out, "|startup:%30s|\n", startup)
+}
+
 func (r *Reporter) reportHealthChecks(out io.Writer) {
 	_, _ = fmt.Fprintln(os.Stdout, header)
 	_, _ = fmt.Fprintln(out, "|Health Status                         |")
 	_, _ = fmt.Fprintln(out, hl)
 	r.reportLiveness(out)
 	r.reportReadiness(out)
+	r.reportStartup(out)
 	_, _ = fmt.Fprintln(out, hl)
 	_, _ = fmt.Fprintln(out, "|Checks                                |")
 
 	checks := r.healthChecks.Value()
 	for k := range checks {
 		hc := checks[k]
-		healthy := yes
-		if hc.GetError() != nil {
-			healthy = no
-		}
+		status := hc.Status.String()
 		affectsLiveness := no
 		affectsReadiness := no
-		if hc.GetAffectsLiveness() {
+		if hc.AffectsLiveness {
 			affectsLiveness = yes
 		}
-		if hc.GetAffectsReadiness() {
+		if hc.AffectsReadiness {
 			affectsReadiness = yes
 		}
 		_, _ = fmt.Fprintln(out, smHeader)
-		_, _ = fmt.Fprintf(out, "||name%32s||\n", hc.GetName())
-		_, _ = fmt.Fprintf(out, "||healthy%29s||\n", healthy)
+		_, _ = fmt.Fprintf(out, "||name%32s||\n", k)
+		_, _ = fmt.Fprintf(out, "||status%30s||\n", status)
 		_, _ = fmt.Fprintf(out, "||affects liveness%20s||\n", affectsLiveness)
 		_, _ = fmt.Fprintf(out, "||affects readiness%19s||\n", affectsReadiness)
 		_, _ = fmt.Fprintln(out, smFooter)

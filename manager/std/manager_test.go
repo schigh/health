@@ -6,20 +6,12 @@ import (
 	"testing"
 	"time"
 
-	"go.uber.org/mock/gomock"
-
 	"github.com/schigh/health"
 	"github.com/schigh/health/manager/std"
-	healthpb "github.com/schigh/health/pkg/v1"
 	"github.com/schigh/health/reporter/test"
 )
 
-func TestManager(t *testing.T) { //nolint:gocognit,gocyclo // so what
-	ctrl := gomock.NewController(t)
-	t.Cleanup(func() {
-		ctrl.Finish()
-	})
-
+func TestManager(t *testing.T) {
 	type addChecker struct {
 		checker           health.Checker
 		opts              []health.AddCheckOption
@@ -48,12 +40,12 @@ func TestManager(t *testing.T) { //nolint:gocognit,gocyclo // so what
 		report                test.Report
 	}
 
-	makeNH := func(name string) *healthpb.Check {
-		return &healthpb.Check{Name: name, Healthy: false}
+	makeNH := func(name string) *health.CheckResult {
+		return &health.CheckResult{Name: name, Status: health.StatusUnhealthy}
 	}
 
-	makeH := func(name string) *healthpb.Check {
-		return &healthpb.Check{Name: name, Healthy: true}
+	makeH := func(name string) *health.CheckResult {
+		return &health.CheckResult{Name: name, Status: health.StatusHealthy}
 	}
 
 	// tests are named like so:
@@ -81,8 +73,8 @@ func TestManager(t *testing.T) { //nolint:gocognit,gocyclo // so what
 			manager: &std.Manager{},
 			checks: map[string]addChecker{
 				"test": {
-					checker: health.CheckerFunc(func(_ context.Context) *healthpb.Check {
-						return &healthpb.Check{}
+					checker: health.CheckerFunc(func(_ context.Context) *health.CheckResult {
+						return &health.CheckResult{}
 					}),
 					opts: []health.AddCheckOption{
 						health.WithCheckFrequency(health.CheckOnce, 0, 10*time.Millisecond),
@@ -98,10 +90,10 @@ func TestManager(t *testing.T) { //nolint:gocognit,gocyclo // so what
 			manager: &std.Manager{},
 			checks: map[string]addChecker{
 				"test": {
-					checker: health.CheckerFunc(func(_ context.Context) *healthpb.Check {
-						return &healthpb.Check{
-							Name:    "test",
-							Healthy: true,
+					checker: health.CheckerFunc(func(_ context.Context) *health.CheckResult {
+						return &health.CheckResult{
+							Name:   "test",
+							Status: health.StatusHealthy,
 						}
 					}),
 				},
@@ -127,8 +119,8 @@ func TestManager(t *testing.T) { //nolint:gocognit,gocyclo // so what
 			manager: &std.Manager{},
 			checks: map[string]addChecker{
 				"test": {
-					checker: health.CheckerFunc(func(_ context.Context) *healthpb.Check {
-						return &healthpb.Check{Name: "test", Healthy: true}
+					checker: health.CheckerFunc(func(_ context.Context) *health.CheckResult {
+						return &health.CheckResult{Name: "test", Status: health.StatusHealthy}
 					}),
 					opts: []health.AddCheckOption{
 						health.WithCheckFrequency(health.CheckAtInterval, 100*time.Millisecond, 10*time.Millisecond),
@@ -147,7 +139,7 @@ func TestManager(t *testing.T) { //nolint:gocognit,gocyclo // so what
 				NumRunningStateChanges:   2,
 				NumLivenessStateChanges:  1,
 				NumReadinessStateChanges: 2,
-				NumHealthCheckUpdates:    19, // will run 19 checks after a 50ms delay
+				NumHealthCheckUpdates:    19,
 				IsLive:                   true,
 			},
 		},
@@ -156,8 +148,8 @@ func TestManager(t *testing.T) { //nolint:gocognit,gocyclo // so what
 			manager: &std.Manager{},
 			checks: map[string]addChecker{
 				"test": {
-					checker: health.CheckerFunc(func(_ context.Context) *healthpb.Check {
-						return &healthpb.Check{Name: "test", Healthy: true}
+					checker: health.CheckerFunc(func(_ context.Context) *health.CheckResult {
+						return &health.CheckResult{Name: "test", Status: health.StatusHealthy}
 					}),
 					opts: []health.AddCheckOption{
 						health.WithCheckFrequency(health.CheckAtInterval, 100*time.Millisecond, 0),
@@ -176,7 +168,7 @@ func TestManager(t *testing.T) { //nolint:gocognit,gocyclo // so what
 				NumRunningStateChanges:   2,
 				NumLivenessStateChanges:  1,
 				NumReadinessStateChanges: 2,
-				NumHealthCheckUpdates:    20, // will run 20 checks
+				NumHealthCheckUpdates:    20,
 				IsLive:                   true,
 			},
 		},
@@ -185,13 +177,13 @@ func TestManager(t *testing.T) { //nolint:gocognit,gocyclo // so what
 			manager: &std.Manager{},
 			checks: map[string]addChecker{
 				"test": {
-					checker: health.CheckerFunc(func(_ context.Context) *healthpb.Check {
-						return &healthpb.Check{Name: "test", Healthy: true}
+					checker: health.CheckerFunc(func(_ context.Context) *health.CheckResult {
+						return &health.CheckResult{Name: "test", Status: health.StatusHealthy}
 					}),
 				},
 				"test2": {
-					checker: health.CheckerFunc(func(_ context.Context) *healthpb.Check {
-						return &healthpb.Check{Name: "test2", Healthy: true}
+					checker: health.CheckerFunc(func(_ context.Context) *health.CheckResult {
+						return &health.CheckResult{Name: "test2", Status: health.StatusHealthy}
 					}),
 				},
 			},
@@ -216,13 +208,11 @@ func TestManager(t *testing.T) { //nolint:gocognit,gocyclo // so what
 			manager: &std.Manager{},
 			checks: map[string]addChecker{
 				"test": {
-					checker: func() health.Checker {
-						c := NewMockChecker(ctrl)
-						nh1 := c.EXPECT().Check(gomock.Any()).Return(makeNH("test"))
-						nh2 := c.EXPECT().Check(gomock.Any()).Return(makeNH("test")).After(nh1)
-						c.EXPECT().Check(gomock.Any()).Return(makeH("test")).After(nh2)
-						return c
-					}(),
+					checker: NewMockChecker(
+						makeNH("test"),
+						makeNH("test"),
+						makeH("test"),
+					),
 					opts: []health.AddCheckOption{
 						health.WithCheckFrequency(health.CheckAtInterval, 550*time.Millisecond, 0),
 					},
@@ -249,13 +239,11 @@ func TestManager(t *testing.T) { //nolint:gocognit,gocyclo // so what
 			manager: &std.Manager{},
 			checks: map[string]addChecker{
 				"test": {
-					checker: func() health.Checker {
-						c := NewMockChecker(ctrl)
-						nh1 := c.EXPECT().Check(gomock.Any()).Return(makeNH("test"))
-						nh2 := c.EXPECT().Check(gomock.Any()).Return(makeNH("test")).After(nh1)
-						c.EXPECT().Check(gomock.Any()).Return(makeH("test")).After(nh2)
-						return c
-					}(),
+					checker: NewMockChecker(
+						makeNH("test"),
+						makeNH("test"),
+						makeH("test"),
+					),
 					opts: []health.AddCheckOption{
 						health.WithCheckFrequency(health.CheckAtInterval, 550*time.Millisecond, 0),
 						health.WithCheckImpact(false, true),
@@ -283,13 +271,11 @@ func TestManager(t *testing.T) { //nolint:gocognit,gocyclo // so what
 			manager: &std.Manager{},
 			checks: map[string]addChecker{
 				"test": {
-					checker: func() health.Checker {
-						c := NewMockChecker(ctrl)
-						nh1 := c.EXPECT().Check(gomock.Any()).Return(makeNH("test"))
-						nh2 := c.EXPECT().Check(gomock.Any()).Return(makeNH("test")).After(nh1)
-						c.EXPECT().Check(gomock.Any()).Return(makeH("test")).After(nh2)
-						return c
-					}(),
+					checker: NewMockChecker(
+						makeNH("test"),
+						makeNH("test"),
+						makeH("test"),
+					),
 					opts: []health.AddCheckOption{
 						health.WithCheckFrequency(health.CheckAtInterval, 550*time.Millisecond, 0),
 						health.WithCheckImpact(true, true),
@@ -306,7 +292,7 @@ func TestManager(t *testing.T) { //nolint:gocognit,gocyclo // so what
 			usingTestReporter: true,
 			report: test.Report{
 				NumRunningStateChanges:   2,
-				NumLivenessStateChanges:  3, // initial on, then off due to health check, then on due to health check, then off at close
+				NumLivenessStateChanges:  3,
 				NumReadinessStateChanges: 2,
 				NumHealthCheckUpdates:    2,
 				IsLive:                   true,
@@ -317,13 +303,11 @@ func TestManager(t *testing.T) { //nolint:gocognit,gocyclo // so what
 			manager: &std.Manager{},
 			checks: map[string]addChecker{
 				"test": {
-					checker: func() health.Checker {
-						c := NewMockChecker(ctrl)
-						nh1 := c.EXPECT().Check(gomock.Any()).Return(makeNH("test"))
-						nh2 := c.EXPECT().Check(gomock.Any()).Return(makeNH("test")).After(nh1)
-						c.EXPECT().Check(gomock.Any()).Return(makeNH("test")).After(nh2)
-						return c
-					}(),
+					checker: NewMockChecker(
+						makeNH("test"),
+						makeNH("test"),
+						makeNH("test"),
+					),
 					opts: []health.AddCheckOption{
 						health.WithCheckFrequency(health.CheckAtInterval, 550*time.Millisecond, 0),
 						health.WithCheckImpact(true, true),
@@ -350,14 +334,12 @@ func TestManager(t *testing.T) { //nolint:gocognit,gocyclo // so what
 			manager: &std.Manager{},
 			checks: map[string]addChecker{
 				"test": {
-					checker: func() health.Checker {
-						c := NewMockChecker(ctrl)
-						nh1 := c.EXPECT().Check(gomock.Any()).Return(makeNH("test"))
-						nh2 := c.EXPECT().Check(gomock.Any()).Return(makeH("test")).After(nh1)
-						nh3 := c.EXPECT().Check(gomock.Any()).Return(makeNH("test")).After(nh2)
-						c.EXPECT().Check(gomock.Any()).Return(makeH("test")).After(nh3)
-						return c
-					}(),
+					checker: NewMockChecker(
+						makeNH("test"),
+						makeH("test"),
+						makeNH("test"),
+						makeH("test"),
+					),
 					opts: []health.AddCheckOption{
 						health.WithCheckFrequency(health.CheckAtInterval, 550*time.Millisecond, 0),
 						health.WithCheckImpact(true, true),
@@ -383,9 +365,7 @@ func TestManager(t *testing.T) { //nolint:gocognit,gocyclo // so what
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			// t.Parallel()
 			ctx := context.Background()
 
 			mgr := tt.manager
@@ -401,7 +381,7 @@ func TestManager(t *testing.T) { //nolint:gocognit,gocyclo // so what
 							}
 							return
 						}
-						t.Fatalf("unepected error adding check: %v", addCheckErr)
+						t.Fatalf("unexpected error adding check: %v", addCheckErr)
 					}
 				}
 			}
@@ -491,9 +471,7 @@ func TestManager(t *testing.T) { //nolint:gocognit,gocyclo // so what
 				t.Fatalf("test reporter is not an instance of *test.Reporter, found %T", rptA)
 			}
 
-			// wait just a moment to allow processes to catch up, specifically
-			// because we are closing the manager and it may take a few ticks to
-			// update the pointer flags internally
+			// wait just a moment to allow processes to catch up
 			time.Sleep(5 * time.Millisecond)
 
 			report := reporter.Report()
@@ -529,4 +507,79 @@ func TestManager(t *testing.T) { //nolint:gocognit,gocyclo // so what
 			}
 		})
 	}
+}
+
+func TestManager_StartupProbe(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	mgr := &std.Manager{}
+	reporter := &test.Reporter{}
+
+	// add a startup check that initially fails, then succeeds
+	callCount := 0
+	_ = mgr.AddCheck("startup_check",
+		health.CheckerFunc(func(_ context.Context) *health.CheckResult {
+			callCount++
+			if callCount <= 2 {
+				return &health.CheckResult{Name: "startup_check", Status: health.StatusUnhealthy}
+			}
+			return &health.CheckResult{Name: "startup_check", Status: health.StatusHealthy}
+		}),
+		health.WithCheckFrequency(health.CheckAtInterval, 200*time.Millisecond, 0),
+		health.WithCheckImpact(true, true),
+		health.WithStartupImpact(true),
+	)
+
+	_ = mgr.AddReporter("test", reporter)
+	_ = mgr.Run(ctx)
+
+	// wait for startup to complete (3 checks at 200ms each = ~600ms)
+	time.Sleep(800 * time.Millisecond)
+
+	report := reporter.Report()
+
+	// startup should have been set to true
+	if !report.IsStartup {
+		t.Fatal("expected startup to be true after startup check passed")
+	}
+
+	// liveness should be true (check passed on 3rd try)
+	if !report.IsLive {
+		t.Fatal("expected liveness to be true after startup completed")
+	}
+
+	_ = mgr.Stop(ctx)
+}
+
+func TestManager_DegradedCheck(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	mgr := &std.Manager{}
+	reporter := &test.Reporter{}
+
+	_ = mgr.AddCheck("degraded_check",
+		health.CheckerFunc(func(_ context.Context) *health.CheckResult {
+			return &health.CheckResult{Name: "degraded_check", Status: health.StatusDegraded}
+		}),
+		health.WithCheckImpact(true, true),
+	)
+
+	_ = mgr.AddReporter("test", reporter)
+	_ = mgr.Run(ctx)
+
+	time.Sleep(200 * time.Millisecond)
+
+	report := reporter.Report()
+
+	// degraded should NOT fail liveness or readiness
+	if !report.IsLive {
+		t.Fatal("expected liveness to be true for degraded check")
+	}
+	if !report.IsReady {
+		t.Fatal("expected readiness to be true for degraded check")
+	}
+
+	_ = mgr.Stop(ctx)
 }

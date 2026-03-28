@@ -4,22 +4,20 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
-	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/schigh/health"
-	healthpb "github.com/schigh/health/pkg/v1"
+	"github.com/schigh/health/internal/syncmap"
 )
 
-// this wraps a checker and its options together.
+// wrapper wraps a checker and its options together.
 type wrapper struct {
 	opts    health.AddCheckOptions
 	checker health.Checker
 }
 
-// this helps us keep a tally of the checks.
+// result helps us keep a tally of the checks.
 type result struct {
 	cancelLive  bool
 	cancelReady bool
@@ -27,16 +25,18 @@ type result struct {
 
 // Manager is the standard manager for application health checks.
 type Manager struct {
-	reporters    *reporterMap
-	checkers     *checkerMap
-	checkResults *checkResultMap
-	checkFunnel  chan *healthpb.Check
+	reporters    syncmap.Map[string, health.Reporter]
+	checkers     syncmap.Map[string, wrapper]
+	checkResults syncmap.Map[string, result]
+	checkFunnel  chan *health.CheckResult
 	errChan      chan error
 	runningPtr   uint32
 	livePtr      uint32
 	readyPtr     uint32
+	startupPtr   uint32
 	allChecksRan uint32
 	initialReady uint32
+	startupDone  uint32
 
 	Logger health.Logger
 }
@@ -68,10 +68,6 @@ func (m *Manager) AddCheck(name string, checker health.Checker, opts ...health.A
 		o.Frequency = health.CheckOnce
 	}
 
-	if m.checkers == nil {
-		m.checkers = &checkerMap{}
-	}
-
 	m.checkers.Set(name, wrapper{
 		opts:    o,
 		checker: checker,
@@ -95,17 +91,13 @@ func (m *Manager) Run(ctx context.Context) <-chan error {
 	}(&shouldReset)
 
 	// set up internals
-	// ---------------------------------------------------
 	if m.Logger == nil {
 		m.Logger = health.NoOpLogger{}
 	}
-	if m.checkResults == nil {
-		m.checkResults = &checkResultMap{}
-	}
 
 	if m.checkFunnel == nil {
-		// this relays results from individual check
-		m.checkFunnel = make(chan *healthpb.Check)
+		// buffered channel to prevent checker goroutines from blocking
+		m.checkFunnel = make(chan *health.CheckResult, m.checkers.Size())
 	}
 
 	if m.errChan == nil {
@@ -114,14 +106,14 @@ func (m *Manager) Run(ctx context.Context) <-chan error {
 		m.errChan = make(chan error, 1)
 	}
 
-	// make sure we have at least one checker and one reporters
-	if m.checkers == nil || m.checkers.Size() == 0 {
+	// make sure we have at least one checker and one reporter
+	if m.checkers.Size() == 0 {
 		shouldReset = true
 		m.errChan <- fmt.Errorf("%w.manager.std: there are no checkers specified for this manager", health.ErrHealth)
 		return m.errChan
 	}
 
-	if m.reporters == nil || m.reporters.Size() == 0 {
+	if m.reporters.Size() == 0 {
 		shouldReset = true
 		m.errChan <- fmt.Errorf("%w.manager.std: there are no reporters specified for this manager", health.ErrHealth)
 		return m.errChan
@@ -146,7 +138,6 @@ func (m *Manager) Run(ctx context.Context) <-chan error {
 	// response. This goroutine halts when the application is closing.
 	go func(h *Manager) {
 		for {
-			// blocks
 			select {
 			case <-ctx.Done():
 				_ = h.Stop(ctx)
@@ -157,6 +148,22 @@ func (m *Manager) Run(ctx context.Context) <-chan error {
 			}
 		}
 	}(m)
+
+	// determine if we have startup checks
+	hasStartupChecks := false
+	m.checkers.Each(func(_ string, w wrapper) bool {
+		if w.opts.AffectsStartup {
+			hasStartupChecks = true
+			return false
+		}
+		return true
+	})
+
+	if !hasStartupChecks {
+		// no startup checks — startup is immediately complete
+		atomic.StoreUint32(&m.startupDone, 1)
+		m.setStartup(ctx, true)
+	}
 
 	// set initial liveness
 	_ = m.setLive(ctx, true)
@@ -174,19 +181,13 @@ func (m *Manager) Stop(ctx context.Context) error {
 	m.reporters.Each(func(key string, reporter health.Reporter) bool {
 		rErr := reporter.Stop(ctx)
 		if rErr != nil && !errors.Is(rErr, context.Canceled) {
-			errs = append(errs, fmt.Errorf("%w.manager.std: reporter '%s' failed to stop: %w", health.ErrHealth, key, rErr))
+			errs = append(errs, fmt.Errorf("reporter '%s' failed to stop: %w", key, rErr))
 		}
 		return true
 	})
 
 	if len(errs) > 0 {
-		errStrs := make([]string, 0, len(errs))
-		for i := range errs {
-			errStrs = append(errStrs, errs[i].Error())
-		}
-
-		// TODO: come up with a better way to convey 0...N errors at once
-		return fmt.Errorf("%w.manager.std: "+strings.Join(errStrs, "\n"), health.ErrHealth)
+		return fmt.Errorf("%w.manager.std: %w", health.ErrHealth, errors.Join(errs...))
 	}
 
 	return nil
@@ -194,19 +195,15 @@ func (m *Manager) Stop(ctx context.Context) error {
 
 func (m *Manager) AddReporter(name string, r health.Reporter) error {
 	if m.running() {
-		return fmt.Errorf("%w.manager.std: cannot add a reporters to a running health instance", health.ErrHealth)
-	}
-
-	if m.reporters == nil {
-		m.reporters = &reporterMap{}
+		return fmt.Errorf("%w.manager.std: cannot add a reporter to a running health instance", health.ErrHealth)
 	}
 
 	m.reporters.Set(name, r)
 	return nil
 }
 
-// set liveness.
-func (m *Manager) setLive(ctx context.Context, b bool) bool { //nolint:unparam
+// setLive sets liveness and notifies reporters if it changed.
+func (m *Manager) setLive(ctx context.Context, b bool) bool {
 	var v uint32
 	if b {
 		v = 1
@@ -215,7 +212,6 @@ func (m *Manager) setLive(ctx context.Context, b bool) bool { //nolint:unparam
 	old := atomic.SwapUint32(&m.livePtr, v)
 	changed := old != v
 
-	// liveness changed state
 	if changed {
 		live := v == 1
 		m.reporters.Each(func(_ string, value health.Reporter) bool {
@@ -227,12 +223,17 @@ func (m *Manager) setLive(ctx context.Context, b bool) bool { //nolint:unparam
 	return changed
 }
 
-// set readiness.
-func (m *Manager) setReady(ctx context.Context, b bool) bool { //nolint:unparam
+// setReady sets readiness and notifies reporters if it changed.
+func (m *Manager) setReady(ctx context.Context, b bool) bool {
 	// we can only be ready after all health checks have reported in
 	if b && atomic.LoadUint32(&m.allChecksRan) == 0 {
 		return false
 	}
+	// we can only be ready if startup is complete
+	if b && atomic.LoadUint32(&m.startupDone) == 0 {
+		return false
+	}
+
 	var v uint32
 	if b {
 		v = 1
@@ -240,7 +241,6 @@ func (m *Manager) setReady(ctx context.Context, b bool) bool { //nolint:unparam
 
 	old := atomic.SwapUint32(&m.readyPtr, v)
 	changed := old != v
-	// readiness changed state
 	if changed {
 		ready := v == 1
 		m.reporters.Each(func(_ string, reporter health.Reporter) bool {
@@ -252,12 +252,28 @@ func (m *Manager) setReady(ctx context.Context, b bool) bool { //nolint:unparam
 	return changed
 }
 
-// process a health check result received from a checker.
-func (m *Manager) processHealthCheck(ctx context.Context, hc *healthpb.Check) {
-	// TODO: this will block subsequent reads on m.checkFunnel.
-	//  We might have to dispatch this func in its own goroutine
-	//  if there is a bottleneck here.
+// setStartup sets startup and notifies reporters if it changed.
+func (m *Manager) setStartup(ctx context.Context, b bool) bool {
+	var v uint32
+	if b {
+		v = 1
+	}
 
+	old := atomic.SwapUint32(&m.startupPtr, v)
+	changed := old != v
+	if changed {
+		startup := v == 1
+		m.reporters.Each(func(_ string, reporter health.Reporter) bool {
+			reporter.SetStartup(ctx, startup)
+			return true
+		})
+	}
+
+	return changed
+}
+
+// process a health check result received from a checker.
+func (m *Manager) processHealthCheck(ctx context.Context, hc *health.CheckResult) {
 	select {
 	case <-ctx.Done():
 		return
@@ -265,51 +281,39 @@ func (m *Manager) processHealthCheck(ctx context.Context, hc *healthpb.Check) {
 	}
 
 	var r result
-	defer func(m *Manager, hc *healthpb.Check, r *result) {
-		m.checkResults.Set(hc.GetName(), *r)
+	defer func(m *Manager, hc *health.CheckResult, r *result) {
+		m.checkResults.Set(hc.Name, *r)
 
-		// this is true when all checks ran at least once
-		allChecksRan := atomic.LoadUint32(&m.allChecksRan)
-		if allChecksRan == 0 {
-			// this will verify that we got at least one
-			// result from each registered health checker
-			cKeys := m.checkers.Keys()
-			ccKeys := m.checkResults.Keys()
-			if len(cKeys) == len(ccKeys) {
-				sort.Strings(cKeys)
-				sort.Strings(ccKeys)
-				for i := range cKeys {
-					if cKeys[i] != ccKeys[i] {
-						// this is kind of a big deal...should never happen
-						m.Logger.Error("health.manager.std: key corruption - registered_checks: %v, found checks: %v", cKeys, ccKeys)
-						// TODO: not sure how to handle this...technically the manager is corrupted
-					}
-				}
+		// check if all registered checks have reported in
+		if atomic.LoadUint32(&m.allChecksRan) == 0 {
+			if m.checkResults.Size() == m.checkers.Size() {
 				atomic.StoreUint32(&m.allChecksRan, 1)
 			}
 		}
 	}(m, hc, &r)
 
-	// the health check result contained an error
-	if err := hc.GetError(); err != nil {
-		m.Logger.Error("health.managers.std: health check '%s' returned an error: %v", hc, err)
+	if hc.Error != nil {
+		m.Logger.Error("health check returned an error", "check", hc.Name, "error", hc.Error)
 	}
 
-	// the health check returned not healthy
-	if !hc.GetHealthy() {
+	switch hc.Status {
+	case health.StatusUnhealthy:
 		switch {
-		case hc.GetAffectsLiveness():
+		case hc.AffectsLiveness:
 			r.cancelReady = true
 			r.cancelLive = true
-		case hc.GetAffectsReadiness():
+		case hc.AffectsReadiness:
 			r.cancelReady = true
 		}
+	case health.StatusDegraded:
+		// degraded checks are reported but do not fail probes
+		m.Logger.Warn("health check degraded", "check", hc.Name)
 	}
 
 	// relay check result to reporters
 	m.reporters.Each(func(_ string, value health.Reporter) bool {
-		value.UpdateHealthChecks(ctx, map[string]*healthpb.Check{
-			hc.GetName(): hc,
+		value.UpdateHealthChecks(ctx, map[string]*health.CheckResult{
+			hc.Name: hc,
 		})
 		return true
 	})
@@ -317,7 +321,6 @@ func (m *Manager) processHealthCheck(ctx context.Context, hc *healthpb.Check) {
 
 // start up reporters.
 func (m *Manager) dispatchReporters(ctx context.Context) error {
-	// start reporting
 	var outErr error
 	m.reporters.Each(func(_ string, reporter health.Reporter) bool {
 		if startErr := reporter.Run(ctx); startErr != nil {
@@ -350,15 +353,15 @@ func (m *Manager) dispatchHealthChecks(ctx context.Context) error {
 	return nil
 }
 
-// this dispatches health checks at a regular interval.
+// dispatchIntervalCheck dispatches health checks at a regular interval.
 func (m *Manager) dispatchIntervalCheck(ctx context.Context, name string, w *wrapper) {
 	if w.opts.Frequency&health.CheckAfter == health.CheckAfter {
-		m.Logger.Debug("health.manager.std: delaying checker - checker: %s, delay: %s", name, w.opts.Delay)
+		m.Logger.Debug("delaying checker", "checker", name, "delay", w.opts.Delay)
 		time.Sleep(w.opts.Delay)
 	}
 
 	t := time.NewTicker(w.opts.Interval)
-	m.Logger.Debug("health.manager.std: running interval checker - checker: %s, interval: %s", name, w.opts.Interval)
+	m.Logger.Debug("running interval checker", "checker", name, "interval", w.opts.Interval)
 	for {
 		select {
 		case <-ctx.Done():
@@ -370,34 +373,62 @@ func (m *Manager) dispatchIntervalCheck(ctx context.Context, name string, w *wra
 			// it does, they are overridden here
 			hc.AffectsLiveness = w.opts.AffectsLiveness
 			hc.AffectsReadiness = w.opts.AffectsReadiness
+			hc.AffectsStartup = w.opts.AffectsStartup
 			m.checkFunnel <- hc
 		}
 	}
 }
 
-// this dispatches a one-time health check.
+// dispatchOneTimeCheck dispatches a one-time health check.
 func (m *Manager) dispatchOneTimeCheck(ctx context.Context, name string, w *wrapper) {
 	if w.opts.Frequency&health.CheckAfter == health.CheckAfter {
-		m.Logger.Debug("health.manager.std: delaying checker - checker: %s, delay: %s", name, w.opts.Delay)
+		m.Logger.Debug("delaying checker", "checker", name, "delay", w.opts.Delay)
 		time.Sleep(w.opts.Delay)
 	}
 
-	m.Logger.Debug("health.manager.std: running one-time checker - checker: %s", name)
+	m.Logger.Debug("running one-time checker", "checker", name)
 	select {
 	case <-ctx.Done():
 		return
 	default:
-		m.checkFunnel <- w.checker.Check(ctx)
+		hc := w.checker.Check(ctx)
+		hc.AffectsLiveness = w.opts.AffectsLiveness
+		hc.AffectsReadiness = w.opts.AffectsReadiness
+		hc.AffectsStartup = w.opts.AffectsStartup
+		m.checkFunnel <- hc
 	}
 }
 
-// this will evaluate the health check results for liveness and readiness.
-// It is run after every health checker result is passed into the work funnel
-// for this manager.
+// evaluateFitness evaluates all check results and updates liveness, readiness,
+// and startup state. It is run after every health check result is processed.
 func (m *Manager) evaluateFitness(ctx context.Context) {
 	// only do this if all checks have been performed at least once
 	if atomic.LoadUint32(&m.allChecksRan) == 0 {
 		return
+	}
+
+	// evaluate startup checks first
+	if atomic.LoadUint32(&m.startupDone) == 0 {
+		startupPassed := true
+		m.checkers.Each(func(name string, w wrapper) bool {
+			if !w.opts.AffectsStartup {
+				return true
+			}
+			r, ok := m.checkResults.Get(name)
+			if !ok || r.cancelLive || r.cancelReady {
+				startupPassed = false
+				return false
+			}
+			return true
+		})
+		if startupPassed {
+			atomic.StoreUint32(&m.startupDone, 1)
+			m.setStartup(ctx, true)
+			m.Logger.Info("startup complete")
+		} else {
+			// startup not complete — don't evaluate liveness/readiness
+			return
+		}
 	}
 
 	// get current liveness and readiness
@@ -418,7 +449,7 @@ func (m *Manager) evaluateFitness(ctx context.Context) {
 
 	// at this point, all checkers have checked in - if they all report ok for
 	// readiness, and this is the first evaluation, we need to flip the ready
-	// switch.  the block below guarded by the atomic will only ever execute once
+	// switch. the block below guarded by the atomic will only ever execute once
 	if actuallyReady {
 		if atomic.CompareAndSwapUint32(&m.initialReady, 0, 1) {
 			reportedReadiness = true
@@ -434,17 +465,17 @@ func (m *Manager) evaluateFitness(ctx context.Context) {
 	readinessChanged := reportedReadiness != actuallyReady
 	if livenessChanged {
 		if !actuallyLive {
-			m.Logger.Error("health.manager.std: liveness set false")
+			m.Logger.Error("liveness set false")
 		} else {
-			m.Logger.Info("health.manager.std: liveness set true")
+			m.Logger.Info("liveness set true")
 		}
 		_ = m.setLive(ctx, actuallyLive)
 	}
 	if readinessChanged {
 		if !actuallyReady {
-			m.Logger.Warn("health.manager.std: readiness set false")
+			m.Logger.Warn("readiness set false")
 		} else {
-			m.Logger.Info("health.manager.std: readiness set true")
+			m.Logger.Info("readiness set true")
 		}
 		_ = m.setReady(ctx, actuallyReady)
 	}
