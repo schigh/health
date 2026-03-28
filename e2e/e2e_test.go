@@ -516,32 +516,53 @@ func TestStartupSequencing(t *testing.T) {
 	t.Log("Scaling Postgres to 0...")
 	ensureScale(t, "postgres", 0)
 
-	// Restart payments (which depends on postgres for startup)
-	t.Log("Restarting payments deployment...")
-	kubectl(t, "rollout", "restart", "deployment/payments")
+	// Scale payments to 0, then back to 1 to get a fresh pod (not a rolling update
+	// which keeps the old pod running)
+	t.Log("Scaling payments to 0...")
+	ensureScale(t, "payments", 0)
 
-	// Give K8s a moment to start the new pod
+	t.Log("Scaling payments to 1 (without postgres)...")
+	kubectl(t, "scale", "deployment/payments", "--replicas=1")
+
+	// Wait for the pod to exist (but it should NOT become Ready)
 	time.Sleep(5 * time.Second)
 
-	// The new payments pod should NOT be ready (postgres is down, startup check fails)
-	out, _ := kubectlNoFail("get", "pods", "-l", "app=payments", "-o",
-		"jsonpath={.items[0].status.conditions[?(@.type=='Ready')].status}")
-	if strings.TrimSpace(out) == "True" {
-		t.Error("payments should NOT be ready while postgres is down")
-	} else {
-		t.Log("Payments correctly not ready while postgres is down")
+	// Check that the pod exists but is not ready
+	// With postgres down, the startup probe should be failing, so the pod stays not-ready
+	deadline := time.Now().Add(15 * time.Second)
+	sawNotReady := false
+	for time.Now().Before(deadline) {
+		out, err := kubectlNoFail("get", "pods", "-l", "app=payments",
+			"--field-selector=status.phase=Running", "-o",
+			"jsonpath={.items[*].status.conditions[?(@.type=='Ready')].status}")
+		if err == nil {
+			statuses := strings.TrimSpace(out)
+			if statuses != "" && statuses != "True" {
+				sawNotReady = true
+				t.Logf("Payments pod is not ready (status: %s) — correct", statuses)
+				break
+			}
+			// If "True", the pod somehow became ready without postgres. That's the failure case.
+			if statuses == "True" {
+				// Double check — maybe it's a stale pod. Give it another moment.
+				time.Sleep(2 * time.Second)
+				continue
+			}
+		}
+		time.Sleep(2 * time.Second)
 	}
-
-	// Verify startup probe is failing (pod should be in startup state)
-	out, _ = kubectlNoFail("get", "pods", "-l", "app=payments", "-o",
-		"jsonpath={.items[0].status.containerStatuses[0].started}")
-	t.Logf("Payments container started status: %s", strings.TrimSpace(out))
+	if !sawNotReady {
+		// Check if there even is a pod
+		out, _ := kubectlNoFail("get", "pods", "-l", "app=payments", "-o", "wide")
+		t.Logf("Pods state:\n%s", out)
+		t.Error("payments should NOT be ready while postgres is down")
+	}
 
 	// Bring Postgres back
 	t.Log("Scaling Postgres back to 1...")
 	ensureScale(t, "postgres", 1)
 
-	// Payments should eventually become ready
+	// Payments should eventually become ready now that postgres is up
 	t.Log("Waiting for payments to complete startup...")
 	cmd := exec.Command("kubectl", "wait", "--for=condition=Ready", "pod",
 		"-l", "app=payments", "--timeout=120s")
@@ -550,7 +571,7 @@ func TestStartupSequencing(t *testing.T) {
 	}
 	t.Log("Payments completed startup after postgres became available")
 
-	// Also wait for orders and gateway to recover (they depend on postgres/payments)
+	// Wait for orders and gateway to recover
 	t.Log("Waiting for full system recovery...")
 	for _, app := range []string{"orders", "gateway"} {
 		cmd := exec.Command("kubectl", "wait", "--for=condition=Ready", "pod",
