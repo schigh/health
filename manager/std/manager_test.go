@@ -471,8 +471,8 @@ func TestManager(t *testing.T) {
 				t.Fatalf("test reporter is not an instance of *test.Reporter, found %T", rptA)
 			}
 
-			// wait just a moment to allow processes to catch up
-			time.Sleep(5 * time.Millisecond)
+			// wait for Stop() to propagate state changes to reporters
+			time.Sleep(50 * time.Millisecond)
 
 			report := reporter.Report()
 

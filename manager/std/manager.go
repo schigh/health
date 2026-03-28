@@ -402,6 +402,11 @@ func (m *Manager) dispatchOneTimeCheck(ctx context.Context, name string, w *wrap
 // evaluateFitness evaluates all check results and updates liveness, readiness,
 // and startup state. It is run after every health check result is processed.
 func (m *Manager) evaluateFitness(ctx context.Context) {
+	// don't evaluate if the manager has been stopped
+	if !m.running() {
+		return
+	}
+
 	// only do this if all checks have been performed at least once
 	if atomic.LoadUint32(&m.allChecksRan) == 0 {
 		return
