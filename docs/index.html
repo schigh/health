@@ -35,6 +35,7 @@
   <div class="nav-inner">
     <a href="#top" class="nav-logo">health</a>
     <div class="nav-links">
+      <a href="#when">When</a>
       <a href="#why">Why</a>
       <a href="#concepts">Concepts</a>
       <a href="#quickstart">Quick Start</a>
@@ -61,6 +62,13 @@
     </div>
   </div>
 </header>
+
+<!-- WHEN -->
+<section id="when">
+  <h2>When To Use This</h2>
+  <p>This library is designed for Go services running in Kubernetes with multiple external dependencies. It is most valuable when you need readiness separate from liveness (your pod is alive but a dependency is down), when you have startup sequencing requirements, or when you run multiple services and want structured visibility into what depends on what.</p>
+  <p>If your service is stateless with no external dependencies, a simple handler returning 200 is sufficient. Where this library earns its place is in multi-service environments where "what's broken and why" matters more than "is the process alive."</p>
+</section>
 
 <!-- WHY -->
 <section id="why">

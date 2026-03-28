@@ -8,6 +8,17 @@ A zero-dependency health check library for Go services. Built for Kubernetes, us
 go get github.com/schigh/health/v2
 ```
 
+## When to use this library
+
+This library is designed for Go services running in Kubernetes with multiple external dependencies (databases, caches, other services). It is most valuable when:
+
+- You need **readiness separate from liveness** (your pod is alive but Postgres is down, so you should stop receiving traffic without being killed)
+- You have **startup sequencing** requirements (loading data, warming caches, waiting for dependencies before accepting traffic)
+- You want **structured observability** into why a service is unhealthy, not just that it restarted
+- You run **multiple services** that depend on each other and want dependency graph visibility
+
+If your service is stateless with no external dependencies, a simple `http.HandleFunc("/healthz", ...)` returning 200 is sufficient. You don't need this library for that.
+
 ## Why this library?
 
 | | health/v2 | heptiolabs | alexliesenfeld | InVisionApp |
