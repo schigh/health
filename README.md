@@ -1,92 +1,229 @@
-# Health
+# health
 
-This library provides a mechanism for a service to check its health and report it 
-to any type of listener. The most common use case for this library is a service 
-running as a kubernetes pod, but it is useful in any running Go service.
+A zero-dependency health check library for Go services. Built for Kubernetes, useful everywhere.
 
-## Concepts
+```go
+go get github.com/schigh/health/v2
+```
 
-### Manager
-The manager is responsible for managing individual health checks and subsequent 
-reporters. It handles setup and teardown of checkers and reporters. It also manages 
-check frequencies and whether liveness and readiness should be affected
+## Why this library?
 
-### Checker
-A checker is anything that implements the `Checker` interface. For one-off checks, 
-you can use the `CheckerFunc` type to wrap them (see example below).
+| | health/v2 | heptiolabs | alexliesenfeld | InVisionApp |
+|---|---|---|---|---|
+| External deps | **0** | 2 | 3 | 5 |
+| K8s probes | liveness, readiness, **startup** | liveness, readiness | liveness, readiness | liveness, readiness |
+| Degraded state | **yes** | no | no | no |
+| Built-in checkers | HTTP, TCP, DNS, Redis, DB, command | HTTP, TCP, DNS | none | none |
+| Maintained | **active** | archived | active | archived |
 
-### Reporter
-A reporter is anything that reports the status of health checks. The current reporters are:
+## Quick Start
 
-#### `httpserver`
-This reporter runs an HTTP server (default port 8181) that reports liveness at `/health/live` 
-and readiness at `/health/ready`. Passing checks will always return an HTTP 200 (OK) response, 
-while failing checks will always return an HTTP 503 (Service Unavailable) response.
-
-#### `stdout`
-This reporter prints to stdout
-
-#### `test`
-this reporter can be used for tests
-
-## Basic Example
-The following is a basic example of how this library can be used
 ```go
 package main
 
 import (
-	"context"
-	"log"
-	"os/signal"
-	"syscall"
-	"time"
+    "context"
+    "os/signal"
+    "syscall"
+    "time"
 
-	"github.com/schigh/health"
-	"github.com/schigh/health/manager/std"
-	healthpb "github.com/schigh/health/pkg/v1"
-	"github.com/schigh/health/reporter/stdout"
+    "github.com/schigh/health/v2"
+    "github.com/schigh/health/v2/manager/std"
+    "github.com/schigh/health/v2/checker/http"
+    "github.com/schigh/health/v2/checker/tcp"
+    "github.com/schigh/health/v2/reporter/httpserver"
 )
 
 func main() {
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer cancel()
+    ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+    defer cancel()
 
-	// create an instance of a health check manager
-	mgr := std.Manager{}
+    mgr := std.Manager{}
 
-	// add a spurious health check that runs at a 5-second interval
-	_ = mgr.AddCheck(
-		"test_check",
-		health.CheckerFunc(func(ctx context.Context) *healthpb.Check {
-			log.Print("Running health check")
-			return &healthpb.Check{
-				Name:             "test_check",
-				Healthy:          true,
-				AffectsLiveness:  true,
-				AffectsReadiness: true,
-			}
-		}),
-		health.WithCheckFrequency(health.CheckAtInterval, 5*time.Second, 0),
-		health.WithCheckImpact(true, true),
-	)
+    // HTTP dependency
+    mgr.AddCheck("api", http.NewChecker("api", "https://api.example.com/health"),
+        health.WithCheckFrequency(health.CheckAtInterval, 10*time.Second, 0),
+        health.WithLivenessImpact(),
+        health.WithReadinessImpact(),
+        health.WithGroup("external"),
+        health.WithComponentType("http"),
+    )
 
-	// add a reporter
-	_ = mgr.AddReporter("stdout", &stdout.Reporter{})
+    // Database (TCP)
+    mgr.AddCheck("postgres", tcp.NewChecker("postgres", "localhost:5432"),
+        health.WithCheckFrequency(health.CheckAtInterval, 5*time.Second, 0),
+        health.WithLivenessImpact(),
+        health.WithReadinessImpact(),
+        health.WithGroup("database"),
+        health.WithComponentType("datastore"),
+    )
 
-	// run the manager
-	// This returns a read-only error channel. You can ignore this if you like.
-	errChan := mgr.Run(ctx)
+    // HTTP reporter with BasicAuth
+    mgr.AddReporter("http", httpserver.New(
+        httpserver.WithPort(8181),
+        httpserver.WithMiddleware(httpserver.BasicAuth("admin", "secret")),
+    ))
 
-	// this toy example won't pipe any errors, but the handling 
-	// is here to demonstrate how that should be done
-	for {
-		select {
-		case err := <-errChan:
-			log.Printf("error: %v", err)
-		case <-ctx.Done():
-			_ = mgr.Stop(ctx) // remember to stop the manager
-			return
-		}
-	}
+    errChan := mgr.Run(ctx)
+    select {
+    case err := <-errChan:
+        panic(err)
+    case <-ctx.Done():
+        mgr.Stop(ctx)
+    }
 }
 ```
+
+## Built-in Checkers
+
+All checkers are zero-dependency, using only the standard library.
+
+| Package | What it checks | Options |
+|---|---|---|
+| `checker/http` | HTTP endpoint returns expected status | `WithTimeout`, `WithExpectedStatus`, `WithMethod`, `WithClient` |
+| `checker/tcp` | TCP port is accepting connections | `WithTimeout` |
+| `checker/dns` | Hostname resolves to an address | `WithTimeout`, `WithResolver` |
+| `checker/redis` | Redis PING via raw RESP protocol | `WithTimeout`, `WithPassword` |
+| `checker/db` | Database ping via `sql.DB` interface | `WithTimeout` |
+| `checker/command` | Run any `func(ctx) error` | (none) |
+
+```go
+// Custom check with the command checker
+mgr.AddCheck("s3", command.NewChecker("s3", func(ctx context.Context) error {
+    _, err := s3Client.HeadBucket(ctx, &s3.HeadBucketInput{Bucket: &bucket})
+    return err
+}))
+```
+
+## Caching
+
+Wrap any checker with TTL-based caching to avoid hammering expensive dependencies:
+
+```go
+cached := health.WithCache(
+    redis.NewChecker("redis", "localhost:6379"),
+    30*time.Second,
+)
+mgr.AddCheck("redis", cached, ...)
+```
+
+## Check Metadata
+
+Checks carry structured metadata for observability and dependency mapping:
+
+```go
+mgr.AddCheck("postgres", dbChecker,
+    health.WithGroup("database"),          // logical group
+    health.WithComponentType("datastore"), // component type hint
+)
+```
+
+The HTTP reporter includes this metadata in the JSON response:
+
+```json
+{
+  "postgres": {
+    "name": "postgres",
+    "status": "healthy",
+    "group": "database",
+    "componentType": "datastore",
+    "duration": "1.234ms",
+    "lastCheck": "2026-03-28T14:30:00Z"
+  }
+}
+```
+
+## Reporters
+
+### HTTP Server (default)
+
+```go
+// Functional options
+reporter := httpserver.New(
+    httpserver.WithPort(9090),
+    httpserver.WithMiddleware(httpserver.BasicAuth("user", "pass")),
+)
+
+// Or struct config
+reporter := httpserver.NewReporter(httpserver.Config{
+    Addr: "0.0.0.0",
+    Port: 8181,
+})
+```
+
+Endpoints: `/health/live`, `/health/ready`, `/health/startup`
+
+### gRPC
+
+Implements the standard `grpc.health.v1.Health` protocol. Separate module to keep the core zero-dep.
+
+```go
+go get github.com/schigh/health/v2/reporter/grpc
+```
+
+```go
+reporter := grpc.NewReporter(grpc.Config{
+    Addr: "0.0.0.0:8182",
+})
+```
+
+### stdout
+
+Prints an ASCII table to stdout. Useful for local development.
+
+### test
+
+Instrumented reporter for unit tests. Tracks state changes, toggle counts, and health check updates.
+
+## Kubernetes
+
+```yaml
+livenessProbe:
+  httpGet:
+    path: /health/live
+    port: 8181
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /health/ready
+    port: 8181
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+startupProbe:
+  httpGet:
+    path: /health/startup
+    port: 8181
+  failureThreshold: 30
+  periodSeconds: 2
+```
+
+## Architecture
+
+```
+Checkers (HTTP, TCP, DNS, Redis, DB, command)
+    │
+    ▼
+CheckResult{Name, Status, Group, ComponentType, Duration, ...}
+    │
+    ▼
+Manager (evaluates fitness, tracks startup/liveness/readiness)
+    │
+    ▼
+Reporters (HTTP server, gRPC, stdout, test)
+    │
+    ▼
+Kubernetes probes, monitoring, dashboards
+```
+
+## Status
+
+- `StatusHealthy` — check is passing
+- `StatusDegraded` — check is passing with warnings (does not fail probes)
+- `StatusUnhealthy` — check is failing
+
+## License
+
+Apache 2.0

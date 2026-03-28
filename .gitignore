@@ -3,4 +3,5 @@ bin/
 .idea
 .vscode
 cover.out
-sandbox/
+sandbox/go.work
+go.work.sum
