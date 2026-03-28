@@ -36,9 +36,27 @@ type Reporter struct {
 	logger  health.Logger
 }
 
-// NewReporter returns an instance of Reporter with
-// routing and caching already set up.
+// New creates an HTTP reporter with functional options.
+//
+//	reporter := httpserver.New(
+//	    httpserver.WithPort(9090),
+//	    httpserver.WithMiddleware(httpserver.BasicAuth("user", "pass")),
+//	)
+func New(opts ...Option) *Reporter {
+	cfg := defaultConfig()
+	for _, o := range opts {
+		o(&cfg)
+	}
+	return newFromConfig(cfg)
+}
+
+// NewReporter creates an HTTP reporter from a Config struct.
+// For functional options, use New() instead.
 func NewReporter(cfg Config) *Reporter {
+	return newFromConfig(cfg)
+}
+
+func newFromConfig(cfg Config) *Reporter {
 	reporter := Reporter{
 		hcCache: mkCache(),
 	}
@@ -52,9 +70,17 @@ func NewReporter(cfg Config) *Reporter {
 	mux.HandleFunc(fmt.Sprintf("/health/%s", strings.TrimPrefix(cfg.LivenessRoute, "/")), reporter.reportLiveness)
 	mux.HandleFunc(fmt.Sprintf("/health/%s", strings.TrimPrefix(cfg.ReadinessRoute, "/")), reporter.reportReadiness)
 	mux.HandleFunc(fmt.Sprintf("/health/%s", strings.TrimPrefix(cfg.StartupRoute, "/")), reporter.reportStartup)
-	handler := reporter.Recover(
-		http.TimeoutHandler(mux, 60*time.Second, "the request timed out"),
-	)
+
+	var handler http.Handler
+	handler = http.TimeoutHandler(mux, 60*time.Second, "the request timed out")
+
+	// apply middleware in reverse order so the first middleware
+	// in the list is the outermost (first to see the request)
+	for i := len(cfg.Middleware) - 1; i >= 0; i-- {
+		handler = cfg.Middleware[i](handler)
+	}
+
+	handler = reporter.Recover(handler)
 
 	reporter.server = &http.Server{
 		ReadHeaderTimeout: 3 * time.Second,
