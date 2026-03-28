@@ -167,6 +167,39 @@ reporter := grpc.NewReporter(grpc.Config{
 })
 ```
 
+### OpenTelemetry
+
+Emits health metrics via the OTel API. Separate module.
+
+```
+go get github.com/schigh/health/v2/reporter/otel
+```
+
+```go
+reporter, err := otel.NewReporter(otel.Config{
+    MeterProvider: provider, // your OTel MeterProvider
+})
+```
+
+Metrics: `health.check.status`, `health.check.duration`, `health.check.executions`, `health.liveness`, `health.readiness`, `health.startup`.
+
+### Prometheus
+
+Exposes health metrics for Prometheus scraping. Separate module.
+
+```
+go get github.com/schigh/health/v2/reporter/prometheus
+```
+
+```go
+reporter := prometheus.NewReporter(prometheus.Config{
+    Namespace: "myapp", // optional prefix
+})
+http.Handle("/metrics", reporter.Handler())
+```
+
+Metrics: `health_check_status`, `health_check_duration_milliseconds`, `health_check_executions_total`, `health_liveness`, `health_readiness`, `health_startup`.
+
 ### stdout
 
 Prints an ASCII table to stdout. Useful for local development.
