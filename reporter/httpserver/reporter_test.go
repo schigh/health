@@ -12,10 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"google.golang.org/protobuf/encoding/protojson"
-
-	healthpb "github.com/schigh/health/pkg/v1"
-	"github.com/schigh/health/reporter/httpserver"
+	"github.com/schigh/health/v2"
+	"github.com/schigh/health/v2/reporter/httpserver"
 )
 
 type test struct {
@@ -34,12 +32,13 @@ func TestReporter(t *testing.T) {
 		Port:           8181,
 		LivenessRoute:  "/live",
 		ReadinessRoute: "/ready",
+		StartupRoute:   "/startup",
 	})
 
 	// context to close test
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// stop reporter measureState all tests
+	// stop reporter after all tests
 	t.Cleanup(func() {
 		defer cancel()
 		if reporter == nil {
@@ -62,10 +61,8 @@ func TestReporter(t *testing.T) {
 
 	tests := mkTests(reporter, &client)
 
-	// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 	// These tests are stateful for this reporter
 	// DO NOT RUN IN PARALLEL
-	// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 	for i := range tests {
 		tt := tests[i]
 		t.Run(tt.name, func(t *testing.T) {
@@ -92,7 +89,7 @@ func mkTests(reporter *httpserver.Reporter, client *http.Client) []test {
 				{
 					sc, hcMap := fetchHealth(t, client, "live")
 					expectStatus(t, sc, http.StatusServiceUnavailable)
-					evalHealthCheckMap(t, hcMap, func(m map[string]*healthpb.Check) error {
+					evalHealthCheckMap(t, hcMap, func(m map[string]checkJSON) error {
 						if len(m) != 0 {
 							return fmt.Errorf("expected no health checks reported, found %d", len(m))
 						}
@@ -103,7 +100,7 @@ func mkTests(reporter *httpserver.Reporter, client *http.Client) []test {
 				{
 					sc, hcMap := fetchHealth(t, client, "ready")
 					expectStatus(t, sc, http.StatusServiceUnavailable)
-					evalHealthCheckMap(t, hcMap, func(m map[string]*healthpb.Check) error {
+					evalHealthCheckMap(t, hcMap, func(m map[string]checkJSON) error {
 						if len(m) != 0 {
 							return fmt.Errorf("expected no health checks reported, found %d", len(m))
 						}
@@ -124,7 +121,7 @@ func mkTests(reporter *httpserver.Reporter, client *http.Client) []test {
 				{
 					sc, hcMap := fetchHealth(t, client, "live")
 					expectStatus(t, sc, http.StatusOK)
-					evalHealthCheckMap(t, hcMap, func(m map[string]*healthpb.Check) error {
+					evalHealthCheckMap(t, hcMap, func(m map[string]checkJSON) error {
 						if len(m) != 0 {
 							return fmt.Errorf("expected no health checks reported, found %d", len(m))
 						}
@@ -135,7 +132,7 @@ func mkTests(reporter *httpserver.Reporter, client *http.Client) []test {
 				{
 					sc, hcMap := fetchHealth(t, client, "ready")
 					expectStatus(t, sc, http.StatusServiceUnavailable)
-					evalHealthCheckMap(t, hcMap, func(m map[string]*healthpb.Check) error {
+					evalHealthCheckMap(t, hcMap, func(m map[string]checkJSON) error {
 						if len(m) != 0 {
 							return fmt.Errorf("expected no health checks reported, found %d", len(m))
 						}
@@ -156,7 +153,7 @@ func mkTests(reporter *httpserver.Reporter, client *http.Client) []test {
 				{
 					sc, hcMap := fetchHealth(t, client, "live")
 					expectStatus(t, sc, http.StatusOK)
-					evalHealthCheckMap(t, hcMap, func(m map[string]*healthpb.Check) error {
+					evalHealthCheckMap(t, hcMap, func(m map[string]checkJSON) error {
 						if len(m) != 0 {
 							return fmt.Errorf("expected no health checks reported, found %d", len(m))
 						}
@@ -167,7 +164,7 @@ func mkTests(reporter *httpserver.Reporter, client *http.Client) []test {
 				{
 					sc, hcMap := fetchHealth(t, client, "ready")
 					expectStatus(t, sc, http.StatusOK)
-					evalHealthCheckMap(t, hcMap, func(m map[string]*healthpb.Check) error {
+					evalHealthCheckMap(t, hcMap, func(m map[string]checkJSON) error {
 						if len(m) != 0 {
 							return fmt.Errorf("expected no health checks reported, found %d", len(m))
 						}
@@ -181,10 +178,10 @@ func mkTests(reporter *httpserver.Reporter, client *http.Client) []test {
 			reporter: reporter,
 			client:   client,
 			prepareState: func(ctx context.Context, _ *testing.T, reporter *httpserver.Reporter) {
-				reporter.UpdateHealthChecks(ctx, map[string]*healthpb.Check{
+				reporter.UpdateHealthChecks(ctx, map[string]*health.CheckResult{
 					"first": {
-						Name:    "first",
-						Healthy: true,
+						Name:   "first",
+						Status: health.StatusHealthy,
 					},
 				})
 			},
@@ -193,7 +190,7 @@ func mkTests(reporter *httpserver.Reporter, client *http.Client) []test {
 				{
 					sc, hcMap := fetchHealth(t, client, "live")
 					expectStatus(t, sc, http.StatusOK)
-					evalHealthCheckMap(t, hcMap, func(m map[string]*healthpb.Check) error {
+					evalHealthCheckMap(t, hcMap, func(m map[string]checkJSON) error {
 						if len(m) != 1 {
 							return fmt.Errorf("expected 1 health check reported, found %d", len(m))
 						}
@@ -207,10 +204,10 @@ func mkTests(reporter *httpserver.Reporter, client *http.Client) []test {
 			reporter: reporter,
 			client:   client,
 			prepareState: func(ctx context.Context, _ *testing.T, reporter *httpserver.Reporter) {
-				reporter.UpdateHealthChecks(ctx, map[string]*healthpb.Check{
+				reporter.UpdateHealthChecks(ctx, map[string]*health.CheckResult{
 					"first": {
-						Name:    "first",
-						Healthy: true,
+						Name:   "first",
+						Status: health.StatusHealthy,
 					},
 				})
 			},
@@ -219,7 +216,7 @@ func mkTests(reporter *httpserver.Reporter, client *http.Client) []test {
 				{
 					sc, hcMap := fetchHealth(t, client, "live")
 					expectStatus(t, sc, http.StatusOK)
-					evalHealthCheckMap(t, hcMap, func(m map[string]*healthpb.Check) error {
+					evalHealthCheckMap(t, hcMap, func(m map[string]checkJSON) error {
 						if len(m) != 1 {
 							return fmt.Errorf("expected 1 health check reported, found %d", len(m))
 						}
@@ -233,10 +230,10 @@ func mkTests(reporter *httpserver.Reporter, client *http.Client) []test {
 			reporter: reporter,
 			client:   client,
 			prepareState: func(ctx context.Context, _ *testing.T, reporter *httpserver.Reporter) {
-				reporter.UpdateHealthChecks(ctx, map[string]*healthpb.Check{
+				reporter.UpdateHealthChecks(ctx, map[string]*health.CheckResult{
 					"second": {
-						Name:    "second",
-						Healthy: true,
+						Name:   "second",
+						Status: health.StatusHealthy,
 					},
 				})
 			},
@@ -245,7 +242,7 @@ func mkTests(reporter *httpserver.Reporter, client *http.Client) []test {
 				{
 					sc, hcMap := fetchHealth(t, client, "live")
 					expectStatus(t, sc, http.StatusOK)
-					evalHealthCheckMap(t, hcMap, func(m map[string]*healthpb.Check) error {
+					evalHealthCheckMap(t, hcMap, func(m map[string]checkJSON) error {
 						if len(m) != 2 {
 							return fmt.Errorf("expected 2 health checks reported, found %d", len(m))
 						}
@@ -259,10 +256,10 @@ func mkTests(reporter *httpserver.Reporter, client *http.Client) []test {
 			reporter: reporter,
 			client:   client,
 			prepareState: func(ctx context.Context, _ *testing.T, reporter *httpserver.Reporter) {
-				reporter.UpdateHealthChecks(ctx, map[string]*healthpb.Check{
+				reporter.UpdateHealthChecks(ctx, map[string]*health.CheckResult{
 					"third": {
-						Name:    "third",
-						Healthy: false,
+						Name:   "third",
+						Status: health.StatusUnhealthy,
 					},
 				})
 			},
@@ -271,7 +268,7 @@ func mkTests(reporter *httpserver.Reporter, client *http.Client) []test {
 				{
 					sc, hcMap := fetchHealth(t, client, "live")
 					expectStatus(t, sc, http.StatusOK)
-					evalHealthCheckMap(t, hcMap, func(m map[string]*healthpb.Check) error {
+					evalHealthCheckMap(t, hcMap, func(m map[string]checkJSON) error {
 						if len(m) != 3 {
 							return fmt.Errorf("expected 3 health checks reported, found %d", len(m))
 						}
@@ -280,8 +277,8 @@ func mkTests(reporter *httpserver.Reporter, client *http.Client) []test {
 							if !ok {
 								return fmt.Errorf("expected health check with name 'third' not found")
 							}
-							if hc.GetHealthy() {
-								return fmt.Errorf("expected health check named 'third' to not be healthy")
+							if hc.Status != "unhealthy" {
+								return fmt.Errorf("expected health check named 'third' to be unhealthy, got %s", hc.Status)
 							}
 						}
 						{
@@ -289,8 +286,8 @@ func mkTests(reporter *httpserver.Reporter, client *http.Client) []test {
 							if !ok {
 								return fmt.Errorf("expected health check with name 'second' not found")
 							}
-							if !hc.GetHealthy() {
-								return fmt.Errorf("expected health check named 'second' to be healthy")
+							if hc.Status != "healthy" {
+								return fmt.Errorf("expected health check named 'second' to be healthy, got %s", hc.Status)
 							}
 						}
 						return nil
@@ -308,32 +305,8 @@ func mkTests(reporter *httpserver.Reporter, client *http.Client) []test {
 			pauseBeforeMeasure: 10 * time.Millisecond,
 			measureState: func(_ context.Context, t *testing.T, client *http.Client) {
 				{
-					sc, hcMap := fetchHealth(t, client, "live")
+					sc, _ := fetchHealth(t, client, "live")
 					expectStatus(t, sc, http.StatusOK)
-					evalHealthCheckMap(t, hcMap, func(m map[string]*healthpb.Check) error {
-						if len(m) != 3 {
-							return fmt.Errorf("expected 3 health checks reported, found %d", len(m))
-						}
-						{
-							hc, ok := m["third"]
-							if !ok {
-								return fmt.Errorf("expected health check with name 'third' not found")
-							}
-							if hc.GetHealthy() {
-								return fmt.Errorf("expected health check named 'third' to not be healthy")
-							}
-						}
-						{
-							hc, ok := m["second"]
-							if !ok {
-								return fmt.Errorf("expected health check with name 'second' not found")
-							}
-							if !hc.GetHealthy() {
-								return fmt.Errorf("expected health check named 'second' to be healthy")
-							}
-						}
-						return nil
-					})
 				}
 				{
 					sc, _ := fetchHealth(t, client, "ready")
@@ -368,16 +341,13 @@ func mkTests(reporter *httpserver.Reporter, client *http.Client) []test {
 					expectStatus(t, sc, http.StatusServiceUnavailable)
 				}
 				{
-					// setting liveness to false does not affect readiness in the
-					// *reporter*. The *manager* determines if readiness is
-					// affected, so this should be unchanged
 					sc, _ := fetchHealth(t, client, "ready")
 					expectStatus(t, sc, http.StatusOK)
 				}
 			},
 		},
 		{
-			name:     "set readiness to false",
+			name:     "set readiness to false 2",
 			reporter: reporter,
 			client:   client,
 			prepareState: func(ctx context.Context, _ *testing.T, reporter *httpserver.Reporter) {
@@ -415,10 +385,43 @@ func mkTests(reporter *httpserver.Reporter, client *http.Client) []test {
 				}
 			},
 		},
+		{
+			name:     "startup probe defaults to not started",
+			reporter: reporter,
+			client:   client,
+			measureState: func(_ context.Context, t *testing.T, client *http.Client) {
+				sc, _ := fetchHealth(t, client, "startup")
+				expectStatus(t, sc, http.StatusServiceUnavailable)
+			},
+		},
+		{
+			name:     "set startup to true",
+			reporter: reporter,
+			client:   client,
+			prepareState: func(ctx context.Context, _ *testing.T, reporter *httpserver.Reporter) {
+				reporter.SetStartup(ctx, true)
+			},
+			pauseBeforeMeasure: 10 * time.Millisecond,
+			measureState: func(_ context.Context, t *testing.T, client *http.Client) {
+				sc, _ := fetchHealth(t, client, "startup")
+				expectStatus(t, sc, http.StatusOK)
+			},
+		},
 	}
 }
 
-func fetchHealth(t *testing.T, client *http.Client, pathSuffix string) (int, map[string]*healthpb.Check) {
+type checkJSON struct {
+	Name             string            `json:"name"`
+	Status           string            `json:"status"`
+	AffectsLiveness  bool              `json:"affectsLiveness"`
+	AffectsReadiness bool              `json:"affectsReadiness"`
+	AffectsStartup   bool              `json:"affectsStartup,omitempty"`
+	Error            string            `json:"error,omitempty"`
+	ErrorSince       string            `json:"errorSince,omitempty"`
+	Metadata         map[string]string `json:"metadata,omitempty"`
+}
+
+func fetchHealth(t *testing.T, client *http.Client, pathSuffix string) (int, map[string]checkJSON) {
 	uri := url.URL{
 		Scheme: "http",
 		Host:   "0.0.0.0:8181",
@@ -436,19 +439,12 @@ func fetchHealth(t *testing.T, client *http.Client, pathSuffix string) (int, map
 	}
 	defer resp.Body.Close()
 
-	var rawJSON map[string]json.RawMessage
-	if dErr := json.NewDecoder(resp.Body).Decode(&rawJSON); dErr != nil && !errors.Is(dErr, io.EOF) {
+	var out map[string]checkJSON
+	if dErr := json.NewDecoder(resp.Body).Decode(&out); dErr != nil && !errors.Is(dErr, io.EOF) {
 		t.Fatalf("unexpected error decoding response from '%s': %v", pathSuffix, dErr)
 	}
-
-	out := make(map[string]*healthpb.Check)
-	for k := range rawJSON {
-		raw := rawJSON[k]
-		var hc healthpb.Check
-		if pErr := protojson.Unmarshal(raw, &hc); pErr != nil {
-			t.Fatalf("unexpected error unmarshalling health check: %v", pErr)
-		}
-		out[k] = &hc
+	if out == nil {
+		out = make(map[string]checkJSON)
 	}
 
 	return resp.StatusCode, out
@@ -460,7 +456,7 @@ func expectStatus(t *testing.T, actual, expected int) {
 	}
 }
 
-func evalHealthCheckMap(t *testing.T, m map[string]*healthpb.Check, f func(map[string]*healthpb.Check) error) {
+func evalHealthCheckMap(t *testing.T, m map[string]checkJSON, f func(map[string]checkJSON) error) {
 	if err := f(m); err != nil {
 		t.Fatalf("health check eval failed: %v", err)
 	}

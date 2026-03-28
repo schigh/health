@@ -2,12 +2,10 @@ package db
 
 import (
 	"context"
+	"errors"
 	"time"
 
-	"google.golang.org/protobuf/types/known/structpb"
-	"google.golang.org/protobuf/types/known/timestamppb"
-
-	healthpb "github.com/schigh/health/pkg/v1"
+	"github.com/schigh/health/v2"
 )
 
 const (
@@ -52,53 +50,53 @@ func NewChecker(name string, pinger CtxPinger, opts ...Option) *Checker {
 	return &out
 }
 
-func (c *Checker) Check(ctx context.Context) *healthpb.Check {
+func (c *Checker) Check(ctx context.Context) *health.CheckResult {
 	now := time.Now()
 	select {
 	case <-ctx.Done():
-		return &healthpb.Check{
-			Name:    c.name,
-			Healthy: false,
-			Error: &structpb.Struct{
-				Fields: map[string]*structpb.Value{
-					"origin": structpb.NewStringValue("github.com/schigh/health/checker/db.Checker.Check"),
-					"text":   structpb.NewStringValue("invalid context"),
-				},
+		return &health.CheckResult{
+			Name:       c.name,
+			Status:     health.StatusUnhealthy,
+			Error:      errors.New("invalid context"),
+			ErrorSince: now,
+			Timestamp:  now,
+			Metadata: map[string]string{
+				"origin": "github.com/schigh/health/v2/checker/db.Checker.Check",
 			},
-			ErrorSince: timestamppb.New(now),
 		}
 	default:
 	}
 
-	out := healthpb.Check{
-		Name:    c.name,
-		Healthy: true,
+	out := health.CheckResult{
+		Name:      c.name,
+		Status:    health.StatusHealthy,
+		Timestamp: now,
 	}
+
 	if c.pinger == nil {
-		out.Healthy = false
-		out.Error = &structpb.Struct{
-			Fields: map[string]*structpb.Value{
-				"origin": structpb.NewStringValue("github.com/schigh/health/checker/db.Checker.Check"),
-				"text":   structpb.NewStringValue("invalid pinger"),
-			},
+		out.Status = health.StatusUnhealthy
+		out.Error = errors.New("invalid pinger")
+		out.ErrorSince = now
+		out.Metadata = map[string]string{
+			"origin": "github.com/schigh/health/v2/checker/db.Checker.Check",
 		}
-		out.ErrorSince = timestamppb.New(now)
 		return &out
 	}
 
 	cCtx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 
+	start := time.Now()
 	err := c.pinger.PingContext(cCtx)
+	out.Duration = time.Since(start)
+
 	if err != nil {
-		out.Healthy = false
-		out.Error = &structpb.Struct{
-			Fields: map[string]*structpb.Value{
-				"origin": structpb.NewStringValue("github.com/schigh/health/checker/db.Checker.Check"),
-				"text":   structpb.NewStringValue(err.Error()),
-			},
+		out.Status = health.StatusUnhealthy
+		out.Error = err
+		out.ErrorSince = now
+		out.Metadata = map[string]string{
+			"origin": "github.com/schigh/health/v2/checker/db.Checker.Check",
 		}
-		out.ErrorSince = timestamppb.New(now)
 	}
 
 	return &out

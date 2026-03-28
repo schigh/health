@@ -6,11 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"google.golang.org/protobuf/encoding/protojson"
-
-	healthpb "github.com/schigh/health/pkg/v1"
-
-	"github.com/schigh/health"
+	"github.com/schigh/health/v2"
 )
 
 // Reporter is a reporter used for testing.
@@ -22,47 +18,57 @@ type Reporter struct {
 	liveToggles    uint32       // number of times liveness changed state
 	ready          uint32       // flag to determine if the reporter shows readiness
 	readyToggles   uint32       // number of times readiness changed state
+	startup        uint32       // flag to determine if the reporter shows startup
+	startupToggles uint32       // number of times startup changed state
 	hcUpdates      uint32       // number of times health checks have been updated
-	//nolint:unused
-	hcFetches uint32 // number of times health checks have been fetched
 
-	liveUp    uint32                     // number of times liveness toggled true
-	liveDown  uint32                     // number of times liveness toggled false
-	readyUp   uint32                     // number of times readiness toggled true
-	readyDown uint32                     // number of times readiness toggled false
-	hc        map[string]*healthpb.Check // internal map of health checks
+	liveUp     uint32                          // number of times liveness toggled true
+	liveDown   uint32                          // number of times liveness toggled false
+	readyUp    uint32                          // number of times readiness toggled true
+	readyDown  uint32                          // number of times readiness toggled false
+	startupUp  uint32                          // number of times startup toggled true
+	startupDown uint32                         // number of times startup toggled false
+	hc         map[string]*health.CheckResult  // internal map of health checks
 }
 
 // Report is a snapshot of this reporter's state.
 type Report struct {
-	IsRunning                bool                       `json:"-"`
-	NumRunningStateChanges   uint32                     `json:"-"`
-	IsLive                   bool                       `json:"-"`
-	NumLivenessStateChanges  uint32                     `json:"-"`
-	NumLivenessSetTrue       uint32                     `json:"-"`
-	NumLivenessSetFalse      uint32                     `json:"-"`
-	IsReady                  bool                       `json:"-"`
-	NumReadinessStateChanges uint32                     `json:"-"`
-	NumReadinessSetTrue      uint32                     `json:"-"`
-	NumReadinessSetFalse     uint32                     `json:"-"`
-	NumHealthCheckUpdates    uint32                     `json:"-"`
-	HealthChecks             map[string]*healthpb.Check `json:"-"`
+	IsRunning                bool                           `json:"-"`
+	NumRunningStateChanges   uint32                         `json:"-"`
+	IsLive                   bool                           `json:"-"`
+	NumLivenessStateChanges  uint32                         `json:"-"`
+	NumLivenessSetTrue       uint32                         `json:"-"`
+	NumLivenessSetFalse      uint32                         `json:"-"`
+	IsReady                  bool                           `json:"-"`
+	NumReadinessStateChanges uint32                         `json:"-"`
+	NumReadinessSetTrue      uint32                         `json:"-"`
+	NumReadinessSetFalse     uint32                         `json:"-"`
+	IsStartup                bool                           `json:"-"`
+	NumStartupStateChanges   uint32                         `json:"-"`
+	NumStartupSetTrue        uint32                         `json:"-"`
+	NumStartupSetFalse       uint32                         `json:"-"`
+	NumHealthCheckUpdates    uint32                         `json:"-"`
+	HealthChecks             map[string]*health.CheckResult `json:"-"`
 }
 
 func (r Report) MarshalJSON() ([]byte, error) {
 	type alias struct {
-		IsRunning                bool                       `json:"isRunning"`
-		NumRunningStateChanges   uint32                     `json:"numRunningStateChanges"`
-		IsLive                   bool                       `json:"isLive"`
-		NumLivenessStateChanges  uint32                     `json:"numLivenessStateChanges"`
-		NumLivenessSetTrue       uint32                     `json:"numLivenessSetTrue"`
-		NumLivenessSetFalse      uint32                     `json:"numLivenessSetFalse"`
-		IsReady                  bool                       `json:"isReady"`
-		NumReadinessStateChanges uint32                     `json:"numReadinessStateChanges"`
-		NumReadinessSetTrue      uint32                     `json:"numReadinessSetTrue"`
-		NumReadinessSetFalse     uint32                     `json:"numReadinessSetFalse"`
-		NumHealthCheckUpdates    uint32                     `json:"numHealthCheckUpdates"`
-		HealthChecks             map[string]json.RawMessage `json:"healthChecks"`
+		IsRunning                bool              `json:"isRunning"`
+		NumRunningStateChanges   uint32            `json:"numRunningStateChanges"`
+		IsLive                   bool              `json:"isLive"`
+		NumLivenessStateChanges  uint32            `json:"numLivenessStateChanges"`
+		NumLivenessSetTrue       uint32            `json:"numLivenessSetTrue"`
+		NumLivenessSetFalse      uint32            `json:"numLivenessSetFalse"`
+		IsReady                  bool              `json:"isReady"`
+		NumReadinessStateChanges uint32            `json:"numReadinessStateChanges"`
+		NumReadinessSetTrue      uint32            `json:"numReadinessSetTrue"`
+		NumReadinessSetFalse     uint32            `json:"numReadinessSetFalse"`
+		IsStartup                bool              `json:"isStartup"`
+		NumStartupStateChanges   uint32            `json:"numStartupStateChanges"`
+		NumStartupSetTrue        uint32            `json:"numStartupSetTrue"`
+		NumStartupSetFalse       uint32            `json:"numStartupSetFalse"`
+		NumHealthCheckUpdates    uint32            `json:"numHealthCheckUpdates"`
+		HealthChecks             map[string]any    `json:"healthChecks"`
 	}
 	out := alias{
 		IsRunning:                r.IsRunning,
@@ -76,16 +82,15 @@ func (r Report) MarshalJSON() ([]byte, error) {
 		NumLivenessSetFalse:      r.NumLivenessSetFalse,
 		NumReadinessSetTrue:      r.NumReadinessSetTrue,
 		NumReadinessSetFalse:     r.NumReadinessSetFalse,
+		IsStartup:                r.IsStartup,
+		NumStartupStateChanges:   r.NumStartupStateChanges,
+		NumStartupSetTrue:        r.NumStartupSetTrue,
+		NumStartupSetFalse:       r.NumStartupSetFalse,
 	}
 
-	hcs := make(map[string]json.RawMessage)
-	for k := range r.HealthChecks {
-		hc := r.HealthChecks[k]
-		data, err := protojson.Marshal(hc)
-		if err != nil {
-			return nil, err
-		}
-		hcs[k] = data
+	hcs := make(map[string]any)
+	for k, hc := range r.HealthChecks {
+		hcs[k] = hc
 	}
 	out.HealthChecks = hcs
 
@@ -107,7 +112,7 @@ func (t *Reporter) Report() Report {
 	defer t.hcMx.Unlock()
 	t.hcMx.Lock()
 
-	healthChecks := make(map[string]*healthpb.Check)
+	healthChecks := make(map[string]*health.CheckResult)
 	for k := range t.hc {
 		healthChecks[k] = t.hc[k]
 	}
@@ -124,6 +129,10 @@ func (t *Reporter) Report() Report {
 		NumLivenessSetFalse:      atomic.LoadUint32(&t.liveDown),
 		NumReadinessSetTrue:      atomic.LoadUint32(&t.readyUp),
 		NumReadinessSetFalse:     atomic.LoadUint32(&t.readyDown),
+		IsStartup:                atomic.LoadUint32(&t.startup) == 1,
+		NumStartupStateChanges:   atomic.LoadUint32(&t.startupToggles),
+		NumStartupSetTrue:        atomic.LoadUint32(&t.startupUp),
+		NumStartupSetFalse:       atomic.LoadUint32(&t.startupDown),
 		HealthChecks:             healthChecks,
 	}
 }
@@ -164,12 +173,17 @@ func (t *Reporter) SetReadiness(_ context.Context, b bool) {
 	boop(&t.ready, b, &t.readyUp, &t.readyDown)
 }
 
-func (t *Reporter) UpdateHealthChecks(_ context.Context, m map[string]*healthpb.Check) {
+func (t *Reporter) SetStartup(_ context.Context, b bool) {
+	defer atomic.AddUint32(&t.startupToggles, 1)
+	boop(&t.startup, b, &t.startupUp, &t.startupDown)
+}
+
+func (t *Reporter) UpdateHealthChecks(_ context.Context, m map[string]*health.CheckResult) {
 	defer atomic.AddUint32(&t.hcUpdates, 1)
 	defer t.hcMx.Unlock()
 	t.hcMx.Lock()
 	if t.hc == nil {
-		t.hc = make(map[string]*healthpb.Check)
+		t.hc = make(map[string]*health.CheckResult)
 	}
 
 	for k := range m {

@@ -5,16 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"google.golang.org/protobuf/encoding/protojson"
-
-	"github.com/schigh/health"
-	healthpb "github.com/schigh/health/pkg/v1"
+	"github.com/schigh/health/v2"
 )
 
 const (
@@ -22,15 +20,18 @@ const (
 	LivenessNegativeResponseCode     = http.StatusServiceUnavailable
 	ReadinessAffirmativeResponseCode = http.StatusOK
 	ReadinessNegativeResponseCode    = http.StatusServiceUnavailable
+	StartupAffirmativeResponseCode   = http.StatusOK
+	StartupNegativeResponseCode      = http.StatusServiceUnavailable
 )
 
 type Reporter struct {
 	running uint32
 	live    uint32
 	ready   uint32
+	startup uint32
 	hcCache *cache
 	hcMx    sync.RWMutex
-	hcs     map[string]*healthpb.Check
+	hcs     map[string]*health.CheckResult
 	server  *http.Server
 	logger  health.Logger
 }
@@ -50,6 +51,7 @@ func NewReporter(cfg Config) *Reporter {
 	mux := http.NewServeMux()
 	mux.HandleFunc(fmt.Sprintf("/health/%s", strings.TrimPrefix(cfg.LivenessRoute, "/")), reporter.reportLiveness)
 	mux.HandleFunc(fmt.Sprintf("/health/%s", strings.TrimPrefix(cfg.ReadinessRoute, "/")), reporter.reportReadiness)
+	mux.HandleFunc(fmt.Sprintf("/health/%s", strings.TrimPrefix(cfg.StartupRoute, "/")), reporter.reportStartup)
 	handler := reporter.Recover(
 		http.TimeoutHandler(mux, 60*time.Second, "the request timed out"),
 	)
@@ -67,7 +69,7 @@ func (r *Reporter) Recover(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				r.logger.Error("health.reporter.httpserver: recovered from panic: %v", recovered)
+				r.logger.Error("recovered from panic", "error", recovered)
 				http.Error(rw, http.StatusText(http.StatusServiceUnavailable), http.StatusServiceUnavailable)
 			}
 		}()
@@ -77,32 +79,25 @@ func (r *Reporter) Recover(next http.Handler) http.Handler {
 
 func (r *Reporter) Run(_ context.Context) error {
 	if !atomic.CompareAndSwapUint32(&r.running, 0, 1) {
-		return errors.New("health.reporters.httpserver: Run - reporter is already running")
+		return errors.New("health.reporter.httpserver: Run - reporter is already running")
 	}
 	if r.hcCache == (*cache)(nil) {
 		r.hcCache = mkCache()
 	}
 
-	// non-blocking, single-write channel
-	errChan := make(chan error, 1)
+	ln, err := net.Listen("tcp", r.server.Addr)
+	if err != nil {
+		atomic.StoreUint32(&r.running, 0)
+		return fmt.Errorf("health.reporter.httpserver: Run - listen error: %w", err)
+	}
+
 	go func() {
-		if err := r.server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
-			r.logger.Error("health.reporter.httpserver: Run - server startup error: %v", err)
-			errChan <- err
+		if err := r.server.Serve(ln); !errors.Is(err, http.ErrServerClosed) {
+			r.logger.Error("server error", "error", err)
 		}
 	}()
 
-	// if the server will throw an error other than a closed error, it will do
-	// it while it's starting up.  Pause a bit to let that happen.  The error
-	// channel will be destroyed when the server is closed
-	time.Sleep(100 * time.Millisecond)
-
-	select {
-	case err := <-errChan:
-		return err
-	default:
-		return nil
-	}
+	return nil
 }
 
 func (r *Reporter) Stop(ctx context.Context) error {
@@ -115,7 +110,6 @@ func (r *Reporter) SetLiveness(_ context.Context, b bool) {
 	if b {
 		v = 1
 	}
-
 	_ = atomic.SwapUint32(&r.live, v)
 }
 
@@ -124,11 +118,18 @@ func (r *Reporter) SetReadiness(_ context.Context, b bool) {
 	if b {
 		v = 1
 	}
-
 	_ = atomic.SwapUint32(&r.ready, v)
 }
 
-func (r *Reporter) UpdateHealthChecks(_ context.Context, m map[string]*healthpb.Check) {
+func (r *Reporter) SetStartup(_ context.Context, b bool) {
+	var v uint32
+	if b {
+		v = 1
+	}
+	_ = atomic.SwapUint32(&r.startup, v)
+}
+
+func (r *Reporter) UpdateHealthChecks(_ context.Context, m map[string]*health.CheckResult) {
 	if atomic.LoadUint32(&r.running) == 0 {
 		return
 	}
@@ -136,7 +137,7 @@ func (r *Reporter) UpdateHealthChecks(_ context.Context, m map[string]*healthpb.
 	r.hcMx.Lock()
 
 	if r.hcs == nil {
-		r.hcs = make(map[string]*healthpb.Check)
+		r.hcs = make(map[string]*health.CheckResult)
 	}
 
 	for k := range m {
@@ -148,7 +149,6 @@ func (r *Reporter) UpdateHealthChecks(_ context.Context, m map[string]*healthpb.
 	r.cacheHealthChecks()
 }
 
-// tell k8s that we're live or not.
 func (r *Reporter) reportLiveness(rw http.ResponseWriter, rq *http.Request) {
 	if atomic.LoadUint32(&r.running) == 0 {
 		r.reportNotRunning(rw, rq)
@@ -166,7 +166,6 @@ func (r *Reporter) reportLiveness(rw http.ResponseWriter, rq *http.Request) {
 	_, _ = rw.Write(data)
 }
 
-// tell k8s that we're ready or not.
 func (r *Reporter) reportReadiness(rw http.ResponseWriter, rq *http.Request) {
 	if atomic.LoadUint32(&r.running) == 0 {
 		r.reportNotRunning(rw, rq)
@@ -184,32 +183,70 @@ func (r *Reporter) reportReadiness(rw http.ResponseWriter, rq *http.Request) {
 	_, _ = rw.Write(data)
 }
 
-// this should only occur immediately at startup and right prepareState
+func (r *Reporter) reportStartup(rw http.ResponseWriter, rq *http.Request) {
+	if atomic.LoadUint32(&r.running) == 0 {
+		r.reportNotRunning(rw, rq)
+		return
+	}
+
+	statusCode := StartupAffirmativeResponseCode
+	if atomic.LoadUint32(&r.startup) == 0 {
+		statusCode = StartupNegativeResponseCode
+	}
+
+	data := r.hcCache.read()
+	rw.Header().Set("Content-Type", "application/json")
+	rw.WriteHeader(statusCode)
+	_, _ = rw.Write(data)
+}
+
+// reportNotRunning should only occur immediately at startup and right before
 // the application terminates.
 func (r *Reporter) reportNotRunning(rw http.ResponseWriter, _ *http.Request) {
 	rw.WriteHeader(http.StatusServiceUnavailable)
 	_, _ = rw.Write([]byte(`{"error":"health.reporter.httpserver: reporter not running"}`))
 }
 
-// goes through each health check and serializes it, then stores it in a cache
-// the cache is updated every time a new health check result is reported.
+// cacheHealthChecks serializes all health checks into JSON and stores the result
+// in the cache. The cache is updated every time a new health check result is reported.
 func (r *Reporter) cacheHealthChecks() {
-	defer r.hcMx.RUnlock()
 	r.hcMx.RLock()
+	defer r.hcMx.RUnlock()
 
-	pl := make(map[string]json.RawMessage)
-	for k := range r.hcs {
-		hc := r.hcs[k]
-		data, mErr := protojson.Marshal(hc)
-		if mErr != nil {
-			r.logger.Error("health.reporter.httpserver: cacheHealthChecks marshal error: %v", mErr)
-			continue
-		}
-		pl[k] = data
+	type checkJSON struct {
+		Name             string            `json:"name"`
+		Status           string            `json:"status"`
+		AffectsLiveness  bool              `json:"affectsLiveness"`
+		AffectsReadiness bool              `json:"affectsReadiness"`
+		AffectsStartup   bool              `json:"affectsStartup,omitempty"`
+		Error            string            `json:"error,omitempty"`
+		ErrorSince       string            `json:"errorSince,omitempty"`
+		Metadata         map[string]string `json:"metadata,omitempty"`
 	}
+
+	pl := make(map[string]checkJSON)
+	for k, hc := range r.hcs {
+		cj := checkJSON{
+			Name:             hc.Name,
+			Status:           hc.Status.String(),
+			AffectsLiveness:  hc.AffectsLiveness,
+			AffectsReadiness: hc.AffectsReadiness,
+			AffectsStartup:   hc.AffectsStartup,
+			Metadata:         hc.Metadata,
+		}
+		if hc.Error != nil {
+			cj.Error = hc.Error.Error()
+		}
+		if !hc.ErrorSince.IsZero() {
+			cj.ErrorSince = hc.ErrorSince.Format(time.RFC3339)
+		}
+		pl[k] = cj
+	}
+
 	data, err := json.Marshal(pl)
 	if err != nil {
-		r.logger.Error("health.reporter.httpserver: cacheHealthChecks marshal error: %v", err)
+		r.logger.Error("cacheHealthChecks marshal error", "error", err)
+		return
 	}
 
 	r.hcCache.write(data)

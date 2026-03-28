@@ -3,15 +3,13 @@ package health
 import (
 	"context"
 	"time"
-
-	healthpb "github.com/schigh/health/pkg/v1"
 )
 
 // CheckerFunc is a functional health checker.
-type CheckerFunc func(context.Context) *healthpb.Check
+type CheckerFunc func(context.Context) *CheckResult
 
 // Check satisfies Checker.
-func (cf CheckerFunc) Check(ctx context.Context) *healthpb.Check {
+func (cf CheckerFunc) Check(ctx context.Context) *CheckResult {
 	return cf(ctx)
 }
 
@@ -22,12 +20,13 @@ type AddCheckOptions struct {
 	Interval         time.Duration
 	AffectsLiveness  bool
 	AffectsReadiness bool
+	AffectsStartup   bool
 }
 
-// AddCheckOption is a functional option for adding a Checker to a health managers.
+// AddCheckOption is a functional option for adding a Checker to a health manager.
 type AddCheckOption func(*AddCheckOptions)
 
-// CheckFrequency is a set of flags to instruct the.
+// CheckFrequency is a set of flags to instruct the check scheduling.
 type CheckFrequency uint
 
 const (
@@ -37,7 +36,7 @@ const (
 	CheckOnce CheckFrequency = 1 << iota
 
 	// CheckAtInterval instructs the Checker to perform its check at a specified
-	// Interval. If the CheckAfter flag is set, this check will begin after a
+	// interval. If the CheckAfter flag is set, this check will begin after a
 	// lapse of the combined Delay and Interval.
 	CheckAtInterval
 
@@ -47,7 +46,7 @@ const (
 )
 
 // WithCheckFrequency tells the health instance the CheckFrequency at which it will perform check with the specified Checker
-// instance. If the value for CheckFrequency is CheckOnce, the Interval parameter is ignored.  If the value for
+// instance. If the value for CheckFrequency is CheckOnce, the Interval parameter is ignored. If the value for
 // CheckFrequency is CheckAtInterval, the value of Interval will be used. If the value of Interval is equal to or less
 // than zero, then the default Interval is used. If the value of Delay is equal to or less than zero, it is ignored.
 // This option is not additive, so multiple invocations of this option will result in the last invocation being used to
@@ -60,14 +59,22 @@ func WithCheckFrequency(f CheckFrequency, interval, delay time.Duration) AddChec
 	}
 }
 
-// WithCheckImpact tells the health instance that a healthcheck affects either the liveness or readiness of the application.
-// Liveness and readiness are ways Kubernetes determines the fitness of a pod
-// (https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/).
-// If liveness is affected by the failing health check, then readiness is also affected. By default, application
-// liveness and readiness are not affected by health check.
+// WithCheckImpact tells the health instance that a healthcheck affects the liveness, readiness, or startup
+// of the application. Liveness and readiness are ways Kubernetes determines the fitness of a pod.
+// If liveness is affected by the failing health check, then readiness is also affected. By default,
+// application liveness, readiness, and startup are not affected by a health check.
 func WithCheckImpact(liveness, readiness bool) AddCheckOption {
 	return func(o *AddCheckOptions) {
 		o.AffectsLiveness = liveness
 		o.AffectsReadiness = readiness
+	}
+}
+
+// WithStartupImpact marks a health check as affecting startup probes. Startup checks
+// must all pass before liveness and readiness probes are evaluated. Once all startup
+// checks pass, startup is considered complete and is not re-evaluated.
+func WithStartupImpact(startup bool) AddCheckOption {
+	return func(o *AddCheckOptions) {
+		o.AffectsStartup = startup
 	}
 }

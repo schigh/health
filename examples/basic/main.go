@@ -7,10 +7,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/schigh/health"
-	"github.com/schigh/health/manager/std"
-	healthpb "github.com/schigh/health/pkg/v1"
-	"github.com/schigh/health/reporter/stdout"
+	"github.com/schigh/health/v2"
+	"github.com/schigh/health/v2/manager/std"
+	"github.com/schigh/health/v2/reporter/stdout"
 )
 
 func main() {
@@ -20,16 +19,14 @@ func main() {
 	// create an instance of a health check manager
 	mgr := std.Manager{}
 
-	// add a spurious health check that runs at a 5-second interval
+	// add a health check that runs at a 5-second interval
 	_ = mgr.AddCheck(
 		"test_check",
-		health.CheckerFunc(func(ctx context.Context) *healthpb.Check {
+		health.CheckerFunc(func(_ context.Context) *health.CheckResult {
 			log.Print("Running health check")
-			return &healthpb.Check{
-				Name:             "test_check",
-				Healthy:          true,
-				AffectsLiveness:  true,
-				AffectsReadiness: true,
+			return &health.CheckResult{
+				Name:   "test_check",
+				Status: health.StatusHealthy,
 			}
 		}),
 		health.WithCheckFrequency(health.CheckAtInterval, 5*time.Second, 0),

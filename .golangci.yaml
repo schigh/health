@@ -1,5 +1,5 @@
 run:
-  go: "1.20"
+  go: "1.22"
   timeout: 300s
   skip-dirs:
     - _test
@@ -16,7 +16,6 @@ linters:
     - durationcheck
     - errorlint
     - exhaustive
-    - exportloopref
     - forbidigo
     - gochecknoglobals
     - gochecknoinits
