@@ -390,17 +390,21 @@ p code, td code, li code, .checker-opts code {
 .info-box strong { color: var(--accent-bright); }
 .info-box a { color: var(--accent-bright); }
 
-/* === DISCOVERY === */
-.discovery-flow pre {
+/* === MERMAID === */
+.mermaid-container {
+  margin: 24px 0;
   background: var(--bg-card);
-  font-size: 13px;
-  text-align: center;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  overflow-x: auto;
 }
 
-/* === ARCHITECTURE === */
-.arch-diagram pre {
-  font-size: 13px;
-  background: var(--bg-card);
+.mermaid-container pre.mermaid {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
   text-align: center;
 }
 

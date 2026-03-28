@@ -5,6 +5,29 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>health — A Health Check Library for Go Services</title>
 <link rel="stylesheet" href="style.css">
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',
+    themeVariables: {
+      darkMode: true,
+      background: '#12121a',
+      primaryColor: '#6c5ce7',
+      primaryTextColor: '#e8e8f0',
+      primaryBorderColor: '#2a2a3a',
+      lineColor: '#8888a0',
+      secondaryColor: '#1a1a28',
+      tertiaryColor: '#12121a',
+      fontFamily: 'Inter, -apple-system, sans-serif',
+      fontSize: '14px',
+      nodeBorder: '#6c5ce7',
+      clusterBkg: '#1a1a28',
+      clusterBorder: '#2a2a3a',
+      edgeLabelBackground: '#12121a'
+    }
+  });
+</script>
 </head>
 <body>
 
@@ -131,17 +154,38 @@ mgr.Stop(ctx)             <span class="cmt">// graceful shutdown</span></code></
   </div>
 
   <h3>How They Fit Together</h3>
-  <div class="concept-flow">
-    <pre>
-  You register:                The manager does:              Reporters expose:
-
-  mgr.AddCheck(...)    ──▶    dispatch on schedule    ──▶    /livez  (200 or 503)
-  mgr.AddCheck(...)    ──▶    collect results         ──▶    /readyz (200 or 503)
-  mgr.AddCheck(...)    ──▶    evaluate fitness        ──▶    /healthz
-                              (liveness, readiness,          /.well-known/health
-                               startup)                      OTel metrics
-  mgr.AddReporter(...) ──▶    notify on state change  ──▶    Prometheus /metrics
-  mgr.AddReporter(...) ──▶                             ──▶    gRPC Health.Check()
+  <div class="mermaid-container">
+    <pre class="mermaid">
+flowchart LR
+    subgraph reg ["You Register"]
+        AC1["AddCheck(...)"]
+        AC2["AddCheck(...)"]
+        AC3["AddCheck(...)"]
+        AR1["AddReporter(...)"]
+        AR2["AddReporter(...)"]
+    end
+    subgraph mgr ["Manager"]
+        D["Dispatch on Schedule"]
+        C["Collect Results"]
+        E["Evaluate Fitness"]
+        N["Notify on State Change"]
+        D --> C --> E --> N
+    end
+    subgraph out ["Reporters Expose"]
+        L["/livez"]
+        R["/readyz"]
+        H["/healthz"]
+        W["/.well-known/health"]
+        O["OTel Metrics"]
+        P["Prometheus /metrics"]
+        G["gRPC Health.Check()"]
+    end
+    AC1 --> D
+    AC2 --> D
+    AC3 --> D
+    AR1 --> N
+    AR2 --> N
+    N --> L & R & H & W & O & P & G
     </pre>
   </div>
 
@@ -523,20 +567,20 @@ fmt.Println(graph.Mermaid())
 fmt.Println(graph.DOT())</code></pre>
 
   <h3>How It Works</h3>
-  <div class="discovery-flow">
-    <pre>
-Service A                    Service B                    Service C
-┌─────────────┐              ┌─────────────┐              ┌─────────────┐
-│ orders-api  │─DependsOn──▶│ payments    │─DependsOn──▶│ stripe-gw   │
-│             │              │             │              │             │
-│ /.well-known│              │ /.well-known│              │ /.well-known│
-│ /health     │              │ /health     │              │ /health     │
-└─────────────┘              └─────────────┘              └─────────────┘
-
-DiscoverGraph("http://orders:8181")
-  → fetches A's manifest, follows DependsOn to B
-  → fetches B's manifest, follows DependsOn to C
-  → returns complete graph with status at every node
+  <div class="mermaid-container">
+    <pre class="mermaid">
+flowchart LR
+    A["orders-api<br/><small>/.well-known/health</small>"]
+    B["payments<br/><small>/.well-known/health</small>"]
+    C["stripe-gw<br/><small>/.well-known/health</small>"]
+    A -- DependsOn --> B -- DependsOn --> C
+    DG["DiscoverGraph()"] -.->|"1. fetch manifest"| A
+    DG -.->|"2. follow DependsOn"| B
+    DG -.->|"3. follow DependsOn"| C
+    style DG fill:#6c5ce7,color:#fff,stroke:#6c5ce7
+    style A fill:#4caf50,color:#fff,stroke:#4caf50
+    style B fill:#4caf50,color:#fff,stroke:#4caf50
+    style C fill:#4caf50,color:#fff,stroke:#4caf50
     </pre>
   </div>
 
@@ -614,57 +658,32 @@ curl "http://localhost:8181/livez?verbose&amp;exclude=redis"
   <h2>Internals</h2>
   <p>This section describes the internal data flow and key design decisions for those who want to understand how the library works under the hood.</p>
 
-  <div class="arch-diagram">
-    <pre>
-┌─────────────────────────────────────────────────────────────────────┐
-│                            Manager                                  │
-│                                                                     │
-│  AddCheck(name, checker, opts...)                                   │
-│       │                                                             │
-│       ▼                                                             │
-│  checkers syncmap.Map[string, wrapper]                              │
-│       │                                                             │
-│       ├─── dispatchIntervalCheck(ctx, name, wrapper)  [goroutine]   │
-│       │         ticker fires → safeCheck() → applyCheckOptions()    │
-│       │         → checkFunnel chan                                   │
-│       │                                                             │
-│       └─── dispatchOneTimeCheck(ctx, name, wrapper)   [goroutine]   │
-│                 safeCheck() → applyCheckOptions()                   │
-│                 → checkFunnel chan                                   │
-│                                                                     │
-│  checkFunnel (buffered, size = num checkers)                        │
-│       │                                                             │
-│       ▼                                                             │
-│  processHealthCheck(ctx, *CheckResult)        [single goroutine]    │
-│       │  1. nil guard                                               │
-│       │  2. store result in checkResults map                        │
-│       │  3. check if all checks have reported (first-run gate)      │
-│       │  4. update reporters with latest check result               │
-│       │                                                             │
-│       ▼                                                             │
-│  evaluateFitness(ctx)                                               │
-│       │  1. bail if manager stopped                                 │
-│       │  2. bail if not all checks have reported yet                │
-│       │  3. if startup checks exist and not all passed: bail        │
-│       │  4. AND across all check results for liveness/readiness     │
-│       │  5. can't be ready if not live                              │
-│       │  6. notify reporters on state change                        │
-│       │                                                             │
-│       ▼                                                             │
-│  setLive / setReady / setStartup                                    │
-│       atomic swap + fan out to reporters.Each(...)                  │
-└─────────────────────────────────────────────────────────────────────┘
-         │              │              │              │
-         ▼              ▼              ▼              ▼
-    ┌─────────┐   ┌──────────┐   ┌─────────┐   ┌──────────┐
-    │  HTTP   │   │   gRPC   │   │  OTel   │   │  Prom    │
-    │ /live   │   │ Check()  │   │ gauges  │   │ gauges   │
-    │ /ready  │   │ Watch()  │   │ hist    │   │ counters │
-    │/startup │   │          │   │ counter │   │ /metrics │
-    │/.well-  │   │          │   │         │   │          │
-    │known/   │   │          │   │         │   │          │
-    │health   │   │          │   │         │   │          │
-    └─────────┘   └──────────┘   └─────────┘   └──────────┘
+  <div class="mermaid-container">
+    <pre class="mermaid">
+flowchart TD
+    AC["AddCheck(name, checker, opts...)"] --> CM["checkers map"]
+    CM --> DI["dispatchIntervalCheck<br/><small>goroutine per check</small>"]
+    CM --> DO["dispatchOneTimeCheck<br/><small>goroutine per check</small>"]
+    DI --> SC["safeCheck()<br/><small>panic recovery</small>"]
+    DO --> SC
+    SC --> AO["applyCheckOptions()<br/><small>set Name, Group, Impact flags</small>"]
+    AO --> CF["checkFunnel<br/><small>buffered channel</small>"]
+    CF --> PH["processHealthCheck<br/><small>single goroutine</small>"]
+    PH --> |"1. nil guard<br/>2. store result<br/>3. first-run gate<br/>4. update reporters"| EF["evaluateFitness"]
+    EF --> |"startup gate<br/>liveness AND<br/>readiness AND<br/>can't be ready if not live"| SS["setLive / setReady / setStartup<br/><small>atomic swap + fan out</small>"]
+    SS --> HTTP["/livez /readyz /healthz<br/>/.well-known/health"]
+    SS --> GRPC["gRPC<br/>Check() / Watch()"]
+    SS --> OTEL["OTel<br/>gauges, histograms, counters"]
+    SS --> PROM["Prometheus<br/>/metrics"]
+
+    style AC fill:#6c5ce7,color:#fff,stroke:none
+    style CF fill:#ff9800,color:#fff,stroke:none
+    style PH fill:#6c5ce7,color:#fff,stroke:none
+    style EF fill:#6c5ce7,color:#fff,stroke:none
+    style HTTP fill:#4caf50,color:#fff,stroke:none
+    style GRPC fill:#4caf50,color:#fff,stroke:none
+    style OTEL fill:#4caf50,color:#fff,stroke:none
+    style PROM fill:#4caf50,color:#fff,stroke:none
     </pre>
   </div>
 
@@ -690,13 +709,25 @@ curl "http://localhost:8181/livez?verbose&amp;exclude=redis"
   <h2>E2E Testing</h2>
   <p>The library includes a full end-to-end test suite that deploys three microservices to a Kind (Kubernetes-in-Docker) cluster with real Postgres and Redis infrastructure.</p>
 
-  <div class="discovery-flow">
-    <pre>
-Gateway (:8181) ──HTTP──▶ Orders (:8182) ──HTTP──▶ Payments (:8183)
-                            │         │
-                         TCP│      RESP│
-                            ▼         ▼
-                        Postgres    Redis
+  <div class="mermaid-container">
+    <pre class="mermaid">
+flowchart LR
+    GW["Gateway<br/><small>:8181</small>"]
+    ORD["Orders<br/><small>:8182</small>"]
+    PAY["Payments<br/><small>:8183</small>"]
+    PG[("Postgres")]
+    RD[("Redis")]
+
+    GW -- HTTP --> ORD -- HTTP --> PAY
+    ORD -- TCP --> PG
+    ORD -- RESP --> RD
+    PAY -- TCP --> PG
+
+    style GW fill:#6c5ce7,color:#fff,stroke:none
+    style ORD fill:#6c5ce7,color:#fff,stroke:none
+    style PAY fill:#6c5ce7,color:#fff,stroke:none
+    style PG fill:#ff9800,color:#fff,stroke:none
+    style RD fill:#ff9800,color:#fff,stroke:none
     </pre>
   </div>
 
