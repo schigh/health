@@ -156,7 +156,7 @@ func TestManager_LivenessAffected(t *testing.T) {
 
 	_ = mgr.AddCheck("test", checker,
 		health.WithCheckFrequency(health.CheckAtInterval, 100*time.Millisecond, 0),
-		health.WithCheckImpact(true, true),
+		health.WithLivenessImpact(), health.WithReadinessImpact(),
 	)
 	_ = mgr.AddReporter("test", rpt)
 
@@ -193,7 +193,7 @@ func TestManager_ReadinessAffected(t *testing.T) {
 
 	_ = mgr.AddCheck("test", checker,
 		health.WithCheckFrequency(health.CheckAtInterval, 100*time.Millisecond, 0),
-		health.WithCheckImpact(false, true),
+		health.WithReadinessImpact(),
 	)
 	_ = mgr.AddReporter("test", rpt)
 
@@ -223,7 +223,7 @@ func TestManager_NeverLive(t *testing.T) {
 		return &health.CheckResult{Name: "test", Status: health.StatusUnhealthy}
 	}),
 		health.WithCheckFrequency(health.CheckAtInterval, 100*time.Millisecond, 0),
-		health.WithCheckImpact(true, true),
+		health.WithLivenessImpact(), health.WithReadinessImpact(),
 	)
 	_ = mgr.AddReporter("test", rpt)
 
@@ -265,8 +265,8 @@ func TestManager_StartupProbe(t *testing.T) {
 			return &health.CheckResult{Name: "startup_check", Status: health.StatusHealthy}
 		}),
 		health.WithCheckFrequency(health.CheckAtInterval, 100*time.Millisecond, 0),
-		health.WithCheckImpact(true, true),
-		health.WithStartupImpact(true),
+		health.WithLivenessImpact(), health.WithReadinessImpact(),
+		health.WithStartupImpact(),
 	)
 
 	_ = mgr.AddReporter("test", rpt)
@@ -299,7 +299,7 @@ func TestManager_DegradedCheck(t *testing.T) {
 		health.CheckerFunc(func(_ context.Context) *health.CheckResult {
 			return &health.CheckResult{Name: "degraded_check", Status: health.StatusDegraded}
 		}),
-		health.WithCheckImpact(true, true),
+		health.WithLivenessImpact(), health.WithReadinessImpact(),
 	)
 
 	_ = mgr.AddReporter("test", rpt)
