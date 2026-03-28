@@ -586,6 +586,29 @@ startupProbe:
     health.WithStartupImpact(),
     health.WithCheckFrequency(health.CheckAtInterval, 2*time.Second, 0),
 )</code></pre>
+
+  <h3>Individual Health Checks</h3>
+  <p>Following the <a href="https://kubernetes.io/docs/reference/using-api/health-checks/#individual-health-checks">Kubernetes API health check convention</a>, you can query individual checks by name and get verbose output.</p>
+
+  <pre><code><span class="cmt"># Individual check by name</span>
+curl http://localhost:8181/livez/postgres
+<span class="cmt"># [+]postgres ok      (200)</span>
+
+curl http://localhost:8181/readyz/redis
+<span class="cmt"># [-]redis failed: connection refused    (503)</span>
+
+<span class="cmt"># Verbose: list all checks with status</span>
+curl http://localhost:8181/livez?verbose
+<span class="cmt"># [+]postgres ok</span>
+<span class="cmt"># [-]redis failed: connection refused</span>
+
+<span class="cmt"># Exclude a check from evaluation</span>
+curl "http://localhost:8181/livez?verbose&amp;exclude=redis"
+<span class="cmt"># [+]postgres ok      (200, redis excluded)</span></code></pre>
+
+  <div class="info-box">
+    <strong>Same pattern for all probes:</strong> <code>/livez/{name}</code>, <code>/readyz/{name}</code>, <code>/healthz/{name}</code>. Unknown check names return 404.
+  </div>
 </section>
 
 <!-- ARCHITECTURE INTERNALS -->

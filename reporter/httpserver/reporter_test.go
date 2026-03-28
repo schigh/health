@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -458,5 +459,159 @@ func expectStatus(t *testing.T, actual, expected int) {
 func evalHealthCheckMap(t *testing.T, m map[string]checkJSON, f func(map[string]checkJSON) error) {
 	if err := f(m); err != nil {
 		t.Fatalf("health check eval failed: %v", err)
+	}
+}
+
+func TestIndividualCheck(t *testing.T) {
+	reporter := httpserver.NewReporter(httpserver.Config{
+		Addr:           "0.0.0.0",
+		Port:           8281,
+		LivenessRoute:  "/livez",
+		ReadinessRoute: "/readyz",
+		StartupRoute:   "/healthz",
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(func() {
+		defer cancel()
+		reporter.Stop(ctx)
+	})
+
+	if err := reporter.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	reporter.SetLiveness(ctx, true)
+	reporter.SetReadiness(ctx, true)
+
+	reporter.UpdateHealthChecks(ctx, map[string]*health.CheckResult{
+		"postgres": {Name: "postgres", Status: health.StatusHealthy},
+		"redis":    {Name: "redis", Status: health.StatusUnhealthy, Error: errors.New("connection refused")},
+	})
+
+	client := http.Client{Timeout: time.Second}
+
+	// individual healthy check
+	{
+		uri := "http://0.0.0.0:8281/livez/postgres"
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, uri, http.NoBody)
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode != 200 {
+			t.Errorf("/livez/postgres: expected 200, got %d", resp.StatusCode)
+		}
+		if !strings.Contains(string(body), "[+]postgres ok") {
+			t.Errorf("expected '[+]postgres ok', got %q", body)
+		}
+	}
+
+	// individual unhealthy check
+	{
+		uri := "http://0.0.0.0:8281/readyz/redis"
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, uri, http.NoBody)
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode != 503 {
+			t.Errorf("/readyz/redis: expected 503, got %d", resp.StatusCode)
+		}
+		if !strings.Contains(string(body), "[-]redis failed") {
+			t.Errorf("expected '[-]redis failed', got %q", body)
+		}
+	}
+
+	// individual check not found
+	{
+		uri := "http://0.0.0.0:8281/livez/nonexistent"
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, uri, http.NoBody)
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != 404 {
+			t.Errorf("/livez/nonexistent: expected 404, got %d", resp.StatusCode)
+		}
+	}
+}
+
+func TestVerbose(t *testing.T) {
+	reporter := httpserver.NewReporter(httpserver.Config{
+		Addr:           "0.0.0.0",
+		Port:           8282,
+		LivenessRoute:  "/livez",
+		ReadinessRoute: "/readyz",
+		StartupRoute:   "/healthz",
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(func() {
+		defer cancel()
+		reporter.Stop(ctx)
+	})
+
+	if err := reporter.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	reporter.SetLiveness(ctx, true)
+	reporter.UpdateHealthChecks(ctx, map[string]*health.CheckResult{
+		"postgres": {Name: "postgres", Status: health.StatusHealthy},
+		"redis":    {Name: "redis", Status: health.StatusUnhealthy, Error: errors.New("timeout")},
+	})
+
+	client := http.Client{Timeout: time.Second}
+
+	// verbose lists all checks
+	{
+		uri := "http://0.0.0.0:8282/livez?verbose"
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, uri, http.NoBody)
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		text := string(body)
+
+		if resp.StatusCode != 503 {
+			t.Errorf("verbose with failing check: expected 503, got %d", resp.StatusCode)
+		}
+		if !strings.Contains(text, "[+]postgres ok") {
+			t.Errorf("expected postgres ok in verbose, got %q", text)
+		}
+		if !strings.Contains(text, "[-]redis failed") {
+			t.Errorf("expected redis failed in verbose, got %q", text)
+		}
+	}
+
+	// verbose with exclude
+	{
+		uri := "http://0.0.0.0:8282/livez?verbose&exclude=redis"
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, uri, http.NoBody)
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		text := string(body)
+
+		if resp.StatusCode != 200 {
+			t.Errorf("verbose excluding failing check: expected 200, got %d", resp.StatusCode)
+		}
+		if strings.Contains(text, "redis") {
+			t.Errorf("excluded redis should not appear in output, got %q", text)
+		}
+		if !strings.Contains(text, "[+]postgres ok") {
+			t.Errorf("expected postgres in output, got %q", text)
+		}
 	}
 }
