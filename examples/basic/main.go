@@ -7,9 +7,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/schigh/health"
-	"github.com/schigh/health/manager/std"
-	"github.com/schigh/health/reporter/stdout"
+	"github.com/schigh/health/v2"
+	"github.com/schigh/health/v2/manager/std"
+	"github.com/schigh/health/v2/reporter/stdout"
 )
 
 func main() {

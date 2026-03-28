@@ -4,7 +4,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/schigh/health/internal/syncmap"
+	"github.com/schigh/health/v2/internal/syncmap"
 )
 
 func TestMap_SetGet(t *testing.T) {

@@ -7,8 +7,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/schigh/health"
-	"github.com/schigh/health/internal/syncmap"
+	"github.com/schigh/health/v2"
+	"github.com/schigh/health/v2/internal/syncmap"
 )
 
 // wrapper wraps a checker and its options together.

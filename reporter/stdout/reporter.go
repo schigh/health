@@ -7,8 +7,8 @@ import (
 	"os"
 	"sync/atomic"
 
-	"github.com/schigh/health"
-	"github.com/schigh/health/internal/syncmap"
+	"github.com/schigh/health/v2"
+	"github.com/schigh/health/v2/internal/syncmap"
 )
 
 var w = os.Stdout //nolint:gochecknoglobals // global ok

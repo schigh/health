@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/schigh/health"
-	"github.com/schigh/health/manager/std"
-	"github.com/schigh/health/reporter/test"
+	"github.com/schigh/health/v2"
+	"github.com/schigh/health/v2/manager/std"
+	"github.com/schigh/health/v2/reporter/test"
 )
 
 func TestManager(t *testing.T) {

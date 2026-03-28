@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/schigh/health"
-	"github.com/schigh/health/reporter/httpserver"
+	"github.com/schigh/health/v2"
+	"github.com/schigh/health/v2/reporter/httpserver"
 )
 
 type test struct {

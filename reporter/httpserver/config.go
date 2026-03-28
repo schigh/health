@@ -1,6 +1,6 @@
 package httpserver
 
-import "github.com/schigh/health"
+import "github.com/schigh/health/v2"
 
 type Config struct {
 	Addr           string `envconfig:"HEALTH_HTTP_REPORTER_ADDR" default:"0.0.0.0"`

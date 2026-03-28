@@ -5,7 +5,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/schigh/health"
+	"github.com/schigh/health/v2"
 )
 
 // MockChecker is a simple mock that returns results from a pre-configured sequence.

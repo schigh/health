@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/schigh/health"
+	"github.com/schigh/health/v2"
 )
 
 const (
@@ -61,7 +61,7 @@ func (c *Checker) Check(ctx context.Context) *health.CheckResult {
 			ErrorSince: now,
 			Timestamp:  now,
 			Metadata: map[string]string{
-				"origin": "github.com/schigh/health/checker/db.Checker.Check",
+				"origin": "github.com/schigh/health/v2/checker/db.Checker.Check",
 			},
 		}
 	default:
@@ -78,7 +78,7 @@ func (c *Checker) Check(ctx context.Context) *health.CheckResult {
 		out.Error = errors.New("invalid pinger")
 		out.ErrorSince = now
 		out.Metadata = map[string]string{
-			"origin": "github.com/schigh/health/checker/db.Checker.Check",
+			"origin": "github.com/schigh/health/v2/checker/db.Checker.Check",
 		}
 		return &out
 	}
@@ -95,7 +95,7 @@ func (c *Checker) Check(ctx context.Context) *health.CheckResult {
 		out.Error = err
 		out.ErrorSince = now
 		out.Metadata = map[string]string{
-			"origin": "github.com/schigh/health/checker/db.Checker.Check",
+			"origin": "github.com/schigh/health/v2/checker/db.Checker.Check",
 		}
 	}
 

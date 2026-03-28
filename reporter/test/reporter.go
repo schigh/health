@@ -6,7 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/schigh/health"
+	"github.com/schigh/health/v2"
 )
 
 // Reporter is a reporter used for testing.

@@ -12,7 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/schigh/health"
+	"github.com/schigh/health/v2"
 )
 
 const (
