@@ -3,14 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>health/v2 — Zero-Dependency Health Checks for Go</title>
+<title>health — A Health Check Library for Go Services</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
 <nav id="nav">
   <div class="nav-inner">
-    <a href="#top" class="nav-logo">health<span>/v2</span></a>
+    <a href="#top" class="nav-logo">health</a>
     <div class="nav-links">
       <a href="#why">Why</a>
       <a href="#concepts">Concepts</a>
@@ -31,10 +31,8 @@
 <header id="top">
   <div class="hero">
     <div class="hero-badge">Zero Dependencies</div>
-    <h1>health<span class="accent">/v2</span></h1>
-    <p class="hero-sub">The health check library Go deserves.<br>
-    6 checkers. 6 reporters. Dependency graph discovery.<br>
-    All with zero external dependencies in the core.</p>
+    <h1>health</h1>
+    <p class="hero-sub">A health check library for Go services</p>
     <div class="hero-install">
       <code>go get github.com/schigh/health/v2</code>
     </div>
@@ -44,7 +42,7 @@
 <!-- WHY -->
 <section id="why">
   <h2>Why This Library</h2>
-  <p>Every other Go healthcheck library either abandoned maintenance, pulls in a dependency tree you didn't ask for, or makes you write your own checkers from scratch. This one doesn't.</p>
+  <p>Most Go health check libraries are either unmaintained, carry heavy dependency trees, or require you to write every checker from scratch. This library takes a different approach: zero external dependencies in the core, batteries included, and designed for Kubernetes from the ground up.</p>
 
   <div class="comparison-table">
     <table>
@@ -73,14 +71,14 @@
 <!-- CONCEPTS -->
 <section id="concepts">
   <h2>Core Concepts</h2>
-  <p>The library is built around three interfaces that work together: Manager, Checker, and Reporter. Understanding these is the key to everything else.</p>
+  <p>The library is built around three interfaces: Manager, Checker, and Reporter. Understanding how they interact is essential to using the library effectively.</p>
 
   <div class="concept-grid">
 
     <div class="concept-card concept-manager">
       <div class="concept-icon">M</div>
       <h3>Manager</h3>
-      <p>The <strong>Manager</strong> is the central orchestrator. It owns the lifecycle of every checker and reporter. When you call <code>mgr.Run(ctx)</code>, it starts all reporters, dispatches all checkers on their configured schedules, and begins evaluating fitness.</p>
+      <p>The <strong>Manager</strong> is the central orchestrator. It controls the lifecycle of every checker and reporter in the system. Calling <code>mgr.Run(ctx)</code> starts all reporters, dispatches all checkers on their configured schedules, and begins evaluating aggregate fitness.</p>
       <p>The manager is responsible for:</p>
       <ul>
         <li>Dispatching checks (one-time or at intervals, with optional delays)</li>
@@ -103,7 +101,7 @@ mgr.Stop(ctx)             <span class="cmt">// graceful shutdown</span></code></
       <pre><code><span class="kw">type</span> Checker <span class="kw">interface</span> {
     Check(context.Context) *CheckResult
 }</code></pre>
-      <p>The manager calls this method on the schedule you configure. The checker doesn't know about scheduling, reporters, or fitness evaluation. It just answers one question: <em>is this dependency healthy right now?</em></p>
+      <p>The manager calls this method on the schedule you configure. A checker has no knowledge of scheduling, reporters, or fitness evaluation. Its sole responsibility is to answer one question: is this dependency healthy right now?</p>
       <p>Checkers return a <code>CheckResult</code> with:</p>
       <ul>
         <li><strong>Status</strong>: Healthy, Degraded, or Unhealthy</li>
@@ -183,7 +181,7 @@ mgr.Stop(ctx)             <span class="cmt">// graceful shutdown</span></code></
 <!-- QUICK START -->
 <section id="quickstart">
   <h2>Quick Start</h2>
-  <p>A real-world example: HTTP dependency check, Postgres via TCP, reporting to an HTTP server with BasicAuth.</p>
+  <p>This example registers an HTTP dependency check, a TCP check against Postgres, and an HTTP reporter with BasicAuth middleware.</p>
 
   <pre><code><span class="kw">package</span> main
 
@@ -257,7 +255,7 @@ mgr.Stop(ctx)             <span class="cmt">// graceful shutdown</span></code></
 <!-- CHECKERS -->
 <section id="checkers">
   <h2>Built-in Checkers</h2>
-  <p>All checkers are zero-dependency, using only the standard library. Each returns <code>*health.CheckResult</code> with Duration, Timestamp, and Metadata populated.</p>
+  <p>All built-in checkers use only the Go standard library and have no external dependencies. Each returns a <code>*health.CheckResult</code> populated with Duration, Timestamp, and Metadata.</p>
 
   <div class="checker-grid">
     <div class="checker-card">
@@ -338,7 +336,7 @@ health.CheckerFunc(<span class="kw">func</span>(ctx context.Context) *health.Che
 <!-- CHECK OPTIONS -->
 <section id="options">
   <h2>Check Options</h2>
-  <p>Every check is configured with functional options. Readable at the call site, no guessing what <code>true, true</code> means.</p>
+  <p>Every check is configured using the functional options pattern. Each option is self-documenting at the call site.</p>
 
   <div class="options-table">
     <table>
@@ -369,7 +367,7 @@ health.CheckerFunc(<span class="kw">func</span>(ctx context.Context) *health.Che
 <!-- REPORTERS -->
 <section id="reporters">
   <h2>Reporters</h2>
-  <p>Reporters receive health state from the manager and expose it to external observers. The core module has three built-in reporters (zero deps). Three more are available as separate modules.</p>
+  <p>Reporters receive health state from the manager and expose it to external observers. The core module includes three built-in reporters with no external dependencies. Three additional reporters are available as separate Go modules.</p>
 
   <div class="reporter-grid">
     <div class="reporter-card">
@@ -435,7 +433,7 @@ fmt.Println(report.NumLivenessStateChanges)</code></pre>
 <!-- CACHING -->
 <section id="caching">
   <h2>Caching</h2>
-  <p>Wrap any checker with TTL-based caching to avoid hammering expensive dependencies. The cache serves stale results during refresh (no thundering herd).</p>
+  <p>Any checker can be wrapped with TTL-based caching to reduce load on expensive dependencies. During a cache refresh, stale results are served to concurrent callers, preventing thundering herd behavior.</p>
 
   <pre><code><span class="cmt">// Cache Redis check results for 30 seconds</span>
 cached := health.WithCache(
@@ -481,7 +479,7 @@ mgr.AddCheck(<span class="str">"redis"</span>, cached,
 <!-- DISCOVERY -->
 <section id="discovery">
   <h2>Service Discovery</h2>
-  <p>This is the feature nobody else has. Every service using this library exposes a <code>/.well-known/health</code> manifest. Other services fetch it and build dependency graphs. Zero infrastructure.</p>
+  <p>Every service using this library can expose a <code>/.well-known/health</code> manifest describing its health checks and their dependencies. Other services can fetch these manifests and build transitive dependency graphs without any additional infrastructure.</p>
 
   <h3>The Manifest</h3>
   <pre><code><span class="cmt">// GET /.well-known/health</span>
@@ -550,7 +548,7 @@ DiscoverGraph("http://orders:8181")
 <!-- KUBERNETES -->
 <section id="kubernetes">
   <h2>Kubernetes</h2>
-  <p>Copy-paste this into your deployment. All three probe types supported.</p>
+  <p>The library supports all three Kubernetes probe types. The following manifest snippet can be added directly to your deployment configuration.</p>
 
   <pre><code><span class="cmt"># Liveness: is the process alive?</span>
 livenessProbe:
@@ -614,7 +612,7 @@ curl "http://localhost:8181/livez?verbose&amp;exclude=redis"
 <!-- ARCHITECTURE INTERNALS -->
 <section id="architecture">
   <h2>Internals</h2>
-  <p>For the curious. Here's how data flows through the system.</p>
+  <p>This section describes the internal data flow and key design decisions for those who want to understand how the library works under the hood.</p>
 
   <div class="arch-diagram">
     <pre>
@@ -690,7 +688,7 @@ curl "http://localhost:8181/livez?verbose&amp;exclude=redis"
 <!-- E2E TESTING -->
 <section id="e2e">
   <h2>E2E Testing</h2>
-  <p>The library ships with a full end-to-end test suite that runs 3 microservices in a Kind (Kubernetes-in-Docker) cluster with real Postgres and Redis.</p>
+  <p>The library includes a full end-to-end test suite that deploys three microservices to a Kind (Kubernetes-in-Docker) cluster with real Postgres and Redis infrastructure.</p>
 
   <div class="discovery-flow">
     <pre>
