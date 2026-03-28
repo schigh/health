@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.2.0.0] - 2026-03-28
+
+### Added
+- Cached checker decorator: `health.WithCache(checker, ttl)` with double-checked locking
+- HTTP reporter functional options: `httpserver.New(WithPort(...), WithMiddleware(...))`
+- `BasicAuth` middleware with constant-time comparison
+- gRPC health reporter (`reporter/grpc`) as separate module, implements `grpc.health.v1.Health`
+- README rewrite with feature matrix, comparison table, K8s probe YAML, architecture diagram
+
+### Changed
+- HTTP reporter `Recover` middleware moved to outermost position (always catches panics)
+- gRPC reporter uses `net.Listen` + `Serve` pattern (same as HTTP reporter)
+
 ## [2.1.0.0] - 2026-03-28
 
 ### Added
