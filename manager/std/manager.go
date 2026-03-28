@@ -274,6 +274,11 @@ func (m *Manager) setStartup(ctx context.Context, b bool) bool {
 
 // process a health check result received from a checker.
 func (m *Manager) processHealthCheck(ctx context.Context, hc *health.CheckResult) {
+	if hc == nil {
+		m.Logger.Error("received nil health check result")
+		return
+	}
+
 	select {
 	case <-ctx.Done():
 		return
@@ -353,6 +358,16 @@ func (m *Manager) dispatchHealthChecks(ctx context.Context) error {
 	return nil
 }
 
+// applyCheckOptions overrides check result fields from the registered options.
+func applyCheckOptions(hc *health.CheckResult, name string, opts *health.AddCheckOptions) {
+	hc.Name = name
+	hc.AffectsLiveness = opts.AffectsLiveness
+	hc.AffectsReadiness = opts.AffectsReadiness
+	hc.AffectsStartup = opts.AffectsStartup
+	hc.Group = opts.Group
+	hc.ComponentType = opts.ComponentType
+}
+
 // dispatchIntervalCheck dispatches health checks at a regular interval.
 func (m *Manager) dispatchIntervalCheck(ctx context.Context, name string, w *wrapper) {
 	if w.opts.Frequency&health.CheckAfter == health.CheckAfter {
@@ -368,12 +383,11 @@ func (m *Manager) dispatchIntervalCheck(ctx context.Context, name string, w *wra
 			t.Stop()
 			return
 		case <-t.C:
-			hc := w.checker.Check(ctx)
-			// the checker shouldn't set these values, but if
-			// it does, they are overridden here
-			hc.AffectsLiveness = w.opts.AffectsLiveness
-			hc.AffectsReadiness = w.opts.AffectsReadiness
-			hc.AffectsStartup = w.opts.AffectsStartup
+			hc := m.safeCheck(ctx, name, w)
+			if hc == nil {
+				continue
+			}
+			applyCheckOptions(hc, name, &w.opts)
 			m.checkFunnel <- hc
 		}
 	}
@@ -391,10 +405,11 @@ func (m *Manager) dispatchOneTimeCheck(ctx context.Context, name string, w *wrap
 	case <-ctx.Done():
 		return
 	default:
-		hc := w.checker.Check(ctx)
-		hc.AffectsLiveness = w.opts.AffectsLiveness
-		hc.AffectsReadiness = w.opts.AffectsReadiness
-		hc.AffectsStartup = w.opts.AffectsStartup
+		hc := m.safeCheck(ctx, name, w)
+		if hc == nil {
+			return
+		}
+		applyCheckOptions(hc, name, &w.opts)
 		m.checkFunnel <- hc
 	}
 }
@@ -484,4 +499,27 @@ func (m *Manager) evaluateFitness(ctx context.Context) {
 		}
 		_ = m.setReady(ctx, actuallyReady)
 	}
+}
+
+// safeCheck runs a checker with panic recovery. Returns nil if the checker
+// panics or returns nil.
+func (m *Manager) safeCheck(ctx context.Context, name string, w *wrapper) (result *health.CheckResult) {
+	defer func() {
+		if r := recover(); r != nil {
+			m.Logger.Error("checker panicked", "checker", name, "panic", r)
+			result = &health.CheckResult{
+				Name:      name,
+				Status:    health.StatusUnhealthy,
+				Error:     fmt.Errorf("checker panicked: %v", r),
+				Timestamp: time.Now(),
+			}
+		}
+	}()
+
+	hc := w.checker.Check(ctx)
+	if hc == nil {
+		m.Logger.Error("checker returned nil result", "checker", name)
+		return nil
+	}
+	return hc
 }

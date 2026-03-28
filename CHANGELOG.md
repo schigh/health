@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.0.0] - 2026-03-28
+
+### Added
+- 5 built-in checkers: `checker/http`, `checker/tcp`, `checker/dns`, `checker/redis`, `checker/command`
+- `Group` and `ComponentType` as first-class fields on `CheckResult`
+- `WithGroup()` and `WithComponentType()` functional options
+- `WithLivenessImpact()` and `WithReadinessImpact()` options (replaces `WithCheckImpact`)
+- Self-describing JSON health endpoints with `duration`, `lastCheck`, `group`, `componentType` fields
+- Panic recovery in manager dispatch (via `safeCheck()`) and httpserver `cacheHealthChecks`
+- Nil guard in `processHealthCheck` for broken checker implementations
+- Redis checker uses raw RESP protocol (zero external dependencies)
+- Command checker runs arbitrary `func(ctx) error` with panic recovery
+
+### Changed
+- `WithCheckImpact(bool, bool)` replaced by `WithLivenessImpact()`, `WithReadinessImpact()`
+- `WithStartupImpact()` no longer takes a bool argument
+- Manager now sets `CheckResult.Name` from registered name in all dispatch paths
+
+### Fixed
+- `CheckResult.Name` was not set by manager dispatch functions
+- Panicking checker could crash manager processing goroutine
+
 ## [2.0.0.0] - 2026-03-28
 
 ### Added
