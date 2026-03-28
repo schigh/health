@@ -153,7 +153,16 @@ reporter := httpserver.NewReporter(httpserver.Config{
 })
 ```
 
-Endpoints: `/livez`, `/readyz`, `/healthz`
+Endpoints: `/livez`, `/readyz`, `/healthz`, `/.well-known/health`
+
+Individual checks by name ([K8s convention](https://kubernetes.io/docs/reference/using-api/health-checks/#individual-health-checks)):
+
+```bash
+curl localhost:8181/livez/postgres    # [+]postgres ok (200)
+curl localhost:8181/readyz/redis      # [-]redis failed: timeout (503)
+curl localhost:8181/livez?verbose     # list all checks
+curl "localhost:8181/livez?verbose&exclude=redis"  # exclude a check
+```
 
 ### gRPC
 

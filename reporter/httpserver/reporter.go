@@ -37,6 +37,9 @@ type Reporter struct {
 	logger      health.Logger
 	serviceName string
 	serviceVer  string
+	livePath    string
+	readyPath   string
+	startupPath string
 }
 
 // New creates an HTTP reporter with functional options.
@@ -60,10 +63,17 @@ func NewReporter(cfg Config) *Reporter {
 }
 
 func newFromConfig(cfg Config) *Reporter {
+	livePath := "/" + strings.TrimPrefix(cfg.LivenessRoute, "/")
+	readyPath := "/" + strings.TrimPrefix(cfg.ReadinessRoute, "/")
+	startupPath := "/" + strings.TrimPrefix(cfg.StartupRoute, "/")
+
 	reporter := Reporter{
 		hcCache:     mkCache(),
 		serviceName: cfg.ServiceName,
 		serviceVer:  cfg.ServiceVersion,
+		livePath:    livePath,
+		readyPath:   readyPath,
+		startupPath: startupPath,
 	}
 
 	reporter.logger = cfg.Logger
@@ -72,9 +82,15 @@ func newFromConfig(cfg Config) *Reporter {
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/"+strings.TrimPrefix(cfg.LivenessRoute, "/"), reporter.reportLiveness)
-	mux.HandleFunc("/"+strings.TrimPrefix(cfg.ReadinessRoute, "/"), reporter.reportReadiness)
-	mux.HandleFunc("/"+strings.TrimPrefix(cfg.StartupRoute, "/"), reporter.reportStartup)
+	// exact path: aggregate probe status + JSON body
+	mux.HandleFunc(livePath, reporter.reportLiveness)
+	mux.HandleFunc(readyPath, reporter.reportReadiness)
+	mux.HandleFunc(startupPath, reporter.reportStartup)
+	// sub-path: individual check by name (e.g., /livez/postgres)
+	mux.HandleFunc(livePath+"/", reporter.reportIndividualCheck)
+	mux.HandleFunc(readyPath+"/", reporter.reportIndividualCheck)
+	mux.HandleFunc(startupPath+"/", reporter.reportIndividualCheck)
+	// discovery manifest
 	mux.HandleFunc("/.well-known/health", reporter.reportManifest)
 
 	var handler http.Handler
@@ -187,6 +203,11 @@ func (r *Reporter) reportLiveness(rw http.ResponseWriter, rq *http.Request) {
 		return
 	}
 
+	if _, ok := rq.URL.Query()["verbose"]; ok {
+		r.reportVerbose(rw, rq)
+		return
+	}
+
 	statusCode := LivenessAffirmativeResponseCode
 	if atomic.LoadUint32(&r.live) == 0 {
 		statusCode = LivenessNegativeResponseCode
@@ -201,6 +222,11 @@ func (r *Reporter) reportLiveness(rw http.ResponseWriter, rq *http.Request) {
 func (r *Reporter) reportReadiness(rw http.ResponseWriter, rq *http.Request) {
 	if atomic.LoadUint32(&r.running) == 0 {
 		r.reportNotRunning(rw, rq)
+		return
+	}
+
+	if _, ok := rq.URL.Query()["verbose"]; ok {
+		r.reportVerbose(rw, rq)
 		return
 	}
 
@@ -221,6 +247,11 @@ func (r *Reporter) reportStartup(rw http.ResponseWriter, rq *http.Request) {
 		return
 	}
 
+	if _, ok := rq.URL.Query()["verbose"]; ok {
+		r.reportVerbose(rw, rq)
+		return
+	}
+
 	statusCode := StartupAffirmativeResponseCode
 	if atomic.LoadUint32(&r.startup) == 0 {
 		statusCode = StartupNegativeResponseCode
@@ -230,6 +261,92 @@ func (r *Reporter) reportStartup(rw http.ResponseWriter, rq *http.Request) {
 	rw.Header().Set("Content-Type", "application/json")
 	rw.WriteHeader(statusCode)
 	_, _ = rw.Write(data)
+}
+
+// reportVerbose returns a K8s-style verbose health check listing.
+// Format: [+]name ok / [-]name failed: error
+// Supports ?exclude=name to omit specific checks.
+func (r *Reporter) reportVerbose(rw http.ResponseWriter, rq *http.Request) {
+	r.hcMx.RLock()
+	defer r.hcMx.RUnlock()
+
+	excludes := make(map[string]bool)
+	for _, name := range rq.URL.Query()["exclude"] {
+		excludes[name] = true
+	}
+
+	allOK := true
+	var buf strings.Builder
+	for name, hc := range r.hcs {
+		if excludes[name] {
+			continue
+		}
+		if hc.Status == health.StatusUnhealthy {
+			allOK = false
+			errMsg := "check failed"
+			if hc.Error != nil {
+				errMsg = hc.Error.Error()
+			}
+			fmt.Fprintf(&buf, "[-]%s failed: %s\n", name, errMsg)
+		} else {
+			fmt.Fprintf(&buf, "[+]%s ok\n", name)
+		}
+	}
+
+	if allOK {
+		rw.WriteHeader(http.StatusOK)
+	} else {
+		rw.WriteHeader(http.StatusServiceUnavailable)
+	}
+	rw.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	_, _ = rw.Write([]byte(buf.String()))
+}
+
+// reportIndividualCheck handles /livez/<name>, /readyz/<name>, /healthz/<name>.
+// Returns 200 if the named check is healthy/degraded, 503 if unhealthy, 404 if not found.
+func (r *Reporter) reportIndividualCheck(rw http.ResponseWriter, rq *http.Request) {
+	if atomic.LoadUint32(&r.running) == 0 {
+		r.reportNotRunning(rw, rq)
+		return
+	}
+
+	// extract check name from path: /livez/postgres → postgres
+	path := rq.URL.Path
+	var checkName string
+	for _, prefix := range []string{r.livePath, r.readyPath, r.startupPath} {
+		trimmed := strings.TrimPrefix(path, prefix+"/")
+		if trimmed != path {
+			checkName = trimmed
+			break
+		}
+	}
+
+	if checkName == "" {
+		http.NotFound(rw, rq)
+		return
+	}
+
+	r.hcMx.RLock()
+	hc, ok := r.hcs[checkName]
+	r.hcMx.RUnlock()
+
+	if !ok {
+		http.NotFound(rw, rq)
+		return
+	}
+
+	rw.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	if hc.Status == health.StatusUnhealthy {
+		rw.WriteHeader(http.StatusServiceUnavailable)
+		errMsg := "check failed"
+		if hc.Error != nil {
+			errMsg = hc.Error.Error()
+		}
+		fmt.Fprintf(rw, "[-]%s failed: %s\n", checkName, errMsg)
+	} else {
+		rw.WriteHeader(http.StatusOK)
+		fmt.Fprintf(rw, "[+]%s ok\n", checkName)
+	}
 }
 
 // reportManifest serves the /.well-known/health discovery manifest.
