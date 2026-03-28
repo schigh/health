@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.3.0.0] - 2026-03-28
+
+### Added
+- OpenTelemetry metrics reporter (`reporter/otel`) as separate module
+  - Metrics: health.check.status, health.check.duration, health.check.executions, health.liveness/readiness/startup
+  - Attributes: check name, group, component_type
+- Prometheus metrics reporter (`reporter/prometheus`) as separate module
+  - Metrics: health_check_status, health_check_duration_milliseconds, health_check_executions_total, health_liveness/readiness/startup
+  - Labels: check, group, component_type, status
+  - Configurable namespace prefix, dedicated registry, Handler() for /metrics
+- gRPC reporter tests (overall health, per-check, Watch stream)
+- README updated with OTel and Prometheus reporter documentation
+
 ## [2.2.0.0] - 2026-03-28
 
 ### Added
