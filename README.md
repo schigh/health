@@ -90,9 +90,3 @@ func main() {
 	}
 }
 ```
-
-## Planned updates
-- ~currently the http reporter used the chi muxxer. I plan to remove it and just use servemux~
-- The documentation was hastily assembled, it's definitely WIP
-- add more examples
-- add more basic checkers
