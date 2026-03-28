@@ -1,0 +1,8 @@
+go.work
+go.work.sum
+reporter/grpc
+reporter/otel
+reporter/prometheus
+.git
+.github
+docs

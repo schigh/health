@@ -1,0 +1,49 @@
+name: E2E Tests
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - name: Install Kind
+        run: go install sigs.k8s.io/kind@v0.25.0
+      - name: Create cluster
+        run: kind create cluster --name health-e2e --config e2e/kind-config.yaml --wait 60s
+      - name: Build images
+        run: |
+          for svc in gateway orders payments; do
+            docker build --build-arg SERVICE=$svc -t health-$svc:e2e -f e2e/Dockerfile .
+            kind load docker-image health-$svc:e2e --name health-e2e
+          done
+      - name: Deploy
+        run: |
+          kubectl apply -f e2e/k8s/
+          kubectl wait --for=condition=Ready pod -l app=postgres --timeout=120s
+          kubectl wait --for=condition=Ready pod -l app=redis --timeout=120s
+          kubectl wait --for=condition=Ready pod -l app=payments --timeout=120s
+          kubectl wait --for=condition=Ready pod -l app=orders --timeout=120s
+          kubectl wait --for=condition=Ready pod -l app=gateway --timeout=120s
+      - name: Run E2E tests
+        run: go test -tags e2e -v -count=1 -timeout=300s ./e2e/
+      - name: Collect logs on failure
+        if: failure()
+        run: |
+          echo "=== Pod Status ==="
+          kubectl get pods -o wide
+          echo "=== Gateway Logs ==="
+          kubectl logs -l app=gateway --tail=50 || true
+          echo "=== Orders Logs ==="
+          kubectl logs -l app=orders --tail=50 || true
+          echo "=== Payments Logs ==="
+          kubectl logs -l app=payments --tail=50 || true
+      - name: Teardown
+        if: always()
+        run: kind delete cluster --name health-e2e
