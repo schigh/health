@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log"
 	"os/signal"
 	"syscall"
 	"time"
@@ -18,7 +19,7 @@ func main() {
 
 	mgr := std.Manager{Logger: health.DefaultLogger()}
 
-	mgr.AddCheck("postgres",
+	if err := mgr.AddCheck("postgres",
 		tcp.NewChecker("postgres", "postgres:5432",
 			tcp.WithTimeout(2*time.Second),
 		),
@@ -28,19 +29,25 @@ func main() {
 		health.WithStartupImpact(),
 		health.WithGroup("database"),
 		health.WithComponentType("datastore"),
-	)
+	); err != nil {
+		log.Fatalf("add check postgres: %v", err)
+	}
 
-	mgr.AddReporter("http", httpserver.New(
+	if err := mgr.AddReporter("http", httpserver.New(
 		httpserver.WithPort(8183),
 		httpserver.WithServiceName("payments"),
 		httpserver.WithServiceVersion("e2e"),
-	))
+	)); err != nil {
+		log.Fatalf("add reporter: %v", err)
+	}
 
 	errChan := mgr.Run(ctx)
 	select {
 	case err := <-errChan:
-		panic(err)
+		log.Fatalf("manager error: %v", err)
 	case <-ctx.Done():
-		mgr.Stop(ctx)
+		if err := mgr.Stop(ctx); err != nil {
+			log.Printf("stop error: %v", err)
+		}
 	}
 }

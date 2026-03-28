@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log"
 	"os/signal"
 	"syscall"
 	"time"
@@ -20,7 +21,7 @@ func main() {
 
 	mgr := std.Manager{Logger: health.DefaultLogger()}
 
-	mgr.AddCheck("postgres",
+	if err := mgr.AddCheck("postgres",
 		tcp.NewChecker("postgres", "postgres:5432",
 			tcp.WithTimeout(2*time.Second),
 		),
@@ -30,9 +31,11 @@ func main() {
 		health.WithStartupImpact(),
 		health.WithGroup("database"),
 		health.WithComponentType("datastore"),
-	)
+	); err != nil {
+		log.Fatalf("add check postgres: %v", err)
+	}
 
-	mgr.AddCheck("redis",
+	if err := mgr.AddCheck("redis",
 		redis.NewChecker("redis", "redis:6379",
 			redis.WithTimeout(2*time.Second),
 		),
@@ -40,9 +43,11 @@ func main() {
 		health.WithReadinessImpact(),
 		health.WithGroup("cache"),
 		health.WithComponentType("datastore"),
-	)
+	); err != nil {
+		log.Fatalf("add check redis: %v", err)
+	}
 
-	mgr.AddCheck("payments-api",
+	if err := mgr.AddCheck("payments-api",
 		checkhttp.NewChecker("payments-api", "http://payments-svc:8183/health/ready",
 			checkhttp.WithTimeout(3*time.Second),
 		),
@@ -51,19 +56,25 @@ func main() {
 		health.WithGroup("services"),
 		health.WithComponentType("http"),
 		health.WithDependsOn("http://payments-svc:8183"),
-	)
+	); err != nil {
+		log.Fatalf("add check payments-api: %v", err)
+	}
 
-	mgr.AddReporter("http", httpserver.New(
+	if err := mgr.AddReporter("http", httpserver.New(
 		httpserver.WithPort(8182),
 		httpserver.WithServiceName("orders"),
 		httpserver.WithServiceVersion("e2e"),
-	))
+	)); err != nil {
+		log.Fatalf("add reporter: %v", err)
+	}
 
 	errChan := mgr.Run(ctx)
 	select {
 	case err := <-errChan:
-		panic(err)
+		log.Fatalf("manager error: %v", err)
 	case <-ctx.Done():
-		mgr.Stop(ctx)
+		if err := mgr.Stop(ctx); err != nil {
+			log.Printf("stop error: %v", err)
+		}
 	}
 }

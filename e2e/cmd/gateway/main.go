@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log"
 	"os/signal"
 	"syscall"
 	"time"
@@ -19,7 +20,7 @@ func main() {
 
 	mgr := std.Manager{Logger: health.DefaultLogger()}
 
-	mgr.AddCheck("orders-api",
+	if err := mgr.AddCheck("orders-api",
 		checkhttp.NewChecker("orders-api", "http://orders-svc:8182/health/ready",
 			checkhttp.WithTimeout(3*time.Second),
 		),
@@ -29,9 +30,11 @@ func main() {
 		health.WithGroup("services"),
 		health.WithComponentType("http"),
 		health.WithDependsOn("http://orders-svc:8182"),
-	)
+	); err != nil {
+		log.Fatalf("add check orders-api: %v", err)
+	}
 
-	mgr.AddCheck("cluster-dns",
+	if err := mgr.AddCheck("cluster-dns",
 		dns.NewChecker("cluster-dns", "kubernetes.default.svc",
 			dns.WithTimeout(2*time.Second),
 		),
@@ -39,19 +42,25 @@ func main() {
 		health.WithStartupImpact(),
 		health.WithGroup("infrastructure"),
 		health.WithComponentType("dns"),
-	)
+	); err != nil {
+		log.Fatalf("add check cluster-dns: %v", err)
+	}
 
-	mgr.AddReporter("http", httpserver.New(
+	if err := mgr.AddReporter("http", httpserver.New(
 		httpserver.WithPort(8181),
 		httpserver.WithServiceName("gateway"),
 		httpserver.WithServiceVersion("e2e"),
-	))
+	)); err != nil {
+		log.Fatalf("add reporter: %v", err)
+	}
 
 	errChan := mgr.Run(ctx)
 	select {
 	case err := <-errChan:
-		panic(err)
+		log.Fatalf("manager error: %v", err)
 	case <-ctx.Done():
-		mgr.Stop(ctx)
+		if err := mgr.Stop(ctx); err != nil {
+			log.Printf("stop error: %v", err)
+		}
 	}
 }
