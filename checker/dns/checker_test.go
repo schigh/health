@@ -2,6 +2,8 @@ package dns_test
 
 import (
 	"context"
+	"fmt"
+	"net"
 	"testing"
 	"time"
 
@@ -27,14 +29,21 @@ func TestChecker_NXDOMAIN(t *testing.T) {
 	}
 }
 
-func TestChecker_ContextCancelled(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	c := dns.NewChecker("test", "localhost")
-	result := c.Check(ctx)
+func TestChecker_ResolverError(t *testing.T) {
+	// Custom resolver that always fails
+	resolver := &net.Resolver{
+		PreferGo: true,
+		Dial: func(_ context.Context, _, _ string) (net.Conn, error) {
+			return nil, &net.OpError{Op: "dial", Err: fmt.Errorf("forced failure")}
+		},
+	}
+	c := dns.NewChecker("test", "example.com",
+		dns.WithResolver(resolver),
+		dns.WithTimeout(time.Second),
+	)
+	result := c.Check(context.Background())
 
 	if result.Status != health.StatusUnhealthy {
-		t.Fatalf("expected unhealthy on cancelled context, got %s", result.Status)
+		t.Fatalf("expected unhealthy on resolver error, got %s", result.Status)
 	}
 }
