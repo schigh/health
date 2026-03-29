@@ -90,44 +90,10 @@ func (m *Manager) Run(ctx context.Context) <-chan error {
 		}
 	}(&shouldReset)
 
-	// set up internals
-	if m.Logger == nil {
-		m.Logger = health.NoOpLogger{}
-	}
+	m.initInternals()
 
-	if m.checkFunnel == nil {
-		// buffered channel to prevent checker goroutines from blocking
-		m.checkFunnel = make(chan *health.CheckResult, m.checkers.Size())
-	}
-
-	if m.errChan == nil {
-		// we use a buffered channel here, so we can push a
-		// startup error straight away if we have to
-		m.errChan = make(chan error, 1)
-	}
-
-	// make sure we have at least one checker and one reporter
-	if m.checkers.Size() == 0 {
-		shouldReset = true
-		m.errChan <- fmt.Errorf("%w.manager.std: there are no checkers specified for this manager", health.ErrHealth)
-		return m.errChan
-	}
-
-	if m.reporters.Size() == 0 {
-		shouldReset = true
-		m.errChan <- fmt.Errorf("%w.manager.std: there are no reporters specified for this manager", health.ErrHealth)
-		return m.errChan
-	}
-
-	// start reporters
-	if err := m.dispatchReporters(ctx); err != nil {
-		shouldReset = true
-		m.errChan <- err
-		return m.errChan
-	}
-
-	// start checkers
-	if err := m.dispatchHealthChecks(ctx); err != nil {
+	// validate and start subsystems; on failure, reset and return
+	if err := m.validateAndStart(ctx); err != nil {
 		shouldReset = true
 		m.errChan <- err
 		return m.errChan
@@ -149,7 +115,48 @@ func (m *Manager) Run(ctx context.Context) <-chan error {
 		}
 	}(m)
 
-	// determine if we have startup checks
+	m.initStartupState(ctx)
+
+	// set initial liveness
+	_ = m.setLive(ctx, true)
+	return m.errChan
+}
+
+// initInternals initializes logger, channels, and other internal state.
+func (m *Manager) initInternals() {
+	if m.Logger == nil {
+		m.Logger = health.NoOpLogger{}
+	}
+	if m.checkFunnel == nil {
+		// buffered channel to prevent checker goroutines from blocking
+		m.checkFunnel = make(chan *health.CheckResult, m.checkers.Size())
+	}
+	if m.errChan == nil {
+		// we use a buffered channel here, so we can push a
+		// startup error straight away if we have to
+		m.errChan = make(chan error, 1)
+	}
+}
+
+// validateAndStart ensures at least one checker and reporter exist, then
+// starts reporters and dispatches health checks. Returns the first error
+// encountered, or nil on success.
+func (m *Manager) validateAndStart(ctx context.Context) error {
+	if m.checkers.Size() == 0 {
+		return fmt.Errorf("%w.manager.std: there are no checkers specified for this manager", health.ErrHealth)
+	}
+	if m.reporters.Size() == 0 {
+		return fmt.Errorf("%w.manager.std: there are no reporters specified for this manager", health.ErrHealth)
+	}
+	if err := m.dispatchReporters(ctx); err != nil {
+		return err
+	}
+	return m.dispatchHealthChecks(ctx)
+}
+
+// initStartupState determines whether any checks affect startup and, if none
+// do, marks startup as immediately complete.
+func (m *Manager) initStartupState(ctx context.Context) {
 	hasStartupChecks := false
 	m.checkers.Each(func(_ string, w wrapper) bool {
 		if w.opts.AffectsStartup {
@@ -160,14 +167,9 @@ func (m *Manager) Run(ctx context.Context) <-chan error {
 	})
 
 	if !hasStartupChecks {
-		// no startup checks — startup is immediately complete
 		atomic.StoreUint32(&m.startupDone, 1)
 		m.setStartup(ctx, true)
 	}
-
-	// set initial liveness
-	_ = m.setLive(ctx, true)
-	return m.errChan
 }
 
 func (m *Manager) Stop(ctx context.Context) error {
@@ -428,45 +430,14 @@ func (m *Manager) evaluateFitness(ctx context.Context) {
 		return
 	}
 
-	// evaluate startup checks first
-	if atomic.LoadUint32(&m.startupDone) == 0 {
-		startupPassed := true
-		m.checkers.Each(func(name string, w wrapper) bool {
-			if !w.opts.AffectsStartup {
-				return true
-			}
-			r, ok := m.checkResults.Get(name)
-			if !ok || r.cancelLive || r.cancelReady {
-				startupPassed = false
-				return false
-			}
-			return true
-		})
-		if startupPassed {
-			atomic.StoreUint32(&m.startupDone, 1)
-			m.setStartup(ctx, true)
-			m.Logger.Info("startup complete")
-		} else {
-			// startup not complete — don't evaluate liveness/readiness
-			return
-		}
+	// evaluate startup checks first; bail if startup is still pending
+	if !m.evaluateStartup(ctx) {
+		return
 	}
 
-	// get current liveness and readiness
-	reportedLiveness := m.isLive()
+	actuallyLive, actuallyReady := m.aggregateResults()
+
 	reportedReadiness := m.isReady()
-
-	// baseline...we will keep and-ing these to the reported liveness
-	// and readiness of each check result
-	actuallyLive, actuallyReady := true, true
-
-	// go over each check result and check if any results can propagate
-	// a liveness or readiness change
-	m.checkResults.Each(func(_ string, value result) bool {
-		actuallyLive = actuallyLive && !value.cancelLive
-		actuallyReady = actuallyReady && !value.cancelReady
-		return true
-	})
 
 	// at this point, all checkers have checked in - if they all report ok for
 	// readiness, and this is the first evaluation, we need to flip the ready
@@ -481,25 +452,77 @@ func (m *Manager) evaluateFitness(ctx context.Context) {
 	// cant be ready if you aren't live
 	actuallyReady = actuallyReady && actuallyLive
 
-	// this indicates that liveness or readiness have changed
-	livenessChanged := reportedLiveness != actuallyLive
-	readinessChanged := reportedReadiness != actuallyReady
-	if livenessChanged {
-		if !actuallyLive {
-			m.Logger.Error("liveness set false")
-		} else {
-			m.Logger.Info("liveness set true")
-		}
-		_ = m.setLive(ctx, actuallyLive)
+	m.applyLivenessChange(ctx, actuallyLive)
+	m.applyReadinessChange(ctx, reportedReadiness, actuallyReady)
+}
+
+// evaluateStartup checks whether all startup-affecting checks have passed.
+// Returns true if startup is complete (either already done or just completed),
+// false if startup is still pending.
+func (m *Manager) evaluateStartup(ctx context.Context) bool {
+	if atomic.LoadUint32(&m.startupDone) != 0 {
+		return true
 	}
-	if readinessChanged {
-		if !actuallyReady {
-			m.Logger.Warn("readiness set false")
-		} else {
-			m.Logger.Info("readiness set true")
+
+	startupPassed := true
+	m.checkers.Each(func(name string, w wrapper) bool {
+		if !w.opts.AffectsStartup {
+			return true
 		}
-		_ = m.setReady(ctx, actuallyReady)
+		r, ok := m.checkResults.Get(name)
+		if !ok || r.cancelLive || r.cancelReady {
+			startupPassed = false
+			return false
+		}
+		return true
+	})
+
+	if !startupPassed {
+		return false
 	}
+
+	atomic.StoreUint32(&m.startupDone, 1)
+	m.setStartup(ctx, true)
+	m.Logger.Info("startup complete")
+	return true
+}
+
+// aggregateResults iterates all check results and returns the aggregate
+// liveness and readiness signals.
+func (m *Manager) aggregateResults() (live, ready bool) {
+	live, ready = true, true
+	m.checkResults.Each(func(_ string, value result) bool {
+		live = live && !value.cancelLive
+		ready = ready && !value.cancelReady
+		return true
+	})
+	return live, ready
+}
+
+// applyLivenessChange updates liveness if it has changed and logs the transition.
+func (m *Manager) applyLivenessChange(ctx context.Context, actuallyLive bool) {
+	if m.isLive() == actuallyLive {
+		return
+	}
+	if !actuallyLive {
+		m.Logger.Error("liveness set false")
+	} else {
+		m.Logger.Info("liveness set true")
+	}
+	_ = m.setLive(ctx, actuallyLive)
+}
+
+// applyReadinessChange updates readiness if it has changed and logs the transition.
+func (m *Manager) applyReadinessChange(ctx context.Context, reportedReadiness, actuallyReady bool) {
+	if reportedReadiness == actuallyReady {
+		return
+	}
+	if !actuallyReady {
+		m.Logger.Warn("readiness set false")
+	} else {
+		m.Logger.Info("readiness set true")
+	}
+	_ = m.setReady(ctx, actuallyReady)
 }
 
 // safeCheck runs a checker with panic recovery. Returns nil if the checker

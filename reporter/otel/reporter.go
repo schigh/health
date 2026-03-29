@@ -166,38 +166,43 @@ func (r *Reporter) UpdateHealthChecks(ctx context.Context, m map[string]*health.
 	r.hcMx.Unlock()
 
 	for _, hc := range m {
-		attrs := []attribute.KeyValue{
-			attribute.String("check", hc.Name),
-		}
-		if hc.Group != "" {
-			attrs = append(attrs, attribute.String("group", hc.Group))
-		}
-		if hc.ComponentType != "" {
-			attrs = append(attrs, attribute.String("component_type", hc.ComponentType))
-		}
-		attrSet := metric.WithAttributes(attrs...)
+		r.recordCheckMetrics(ctx, hc)
+	}
+}
 
-		// status gauge: 0=unhealthy, 1=degraded, 2=healthy
-		var statusVal int64
-		switch hc.Status {
-		case health.StatusHealthy:
-			statusVal = 2
-		case health.StatusDegraded:
-			statusVal = 1
-		case health.StatusUnhealthy:
-			statusVal = 0
-		}
-		r.checkGauge.Record(ctx, statusVal, attrSet)
+// recordCheckMetrics emits OTel metrics for a single health check result.
+func (r *Reporter) recordCheckMetrics(ctx context.Context, hc *health.CheckResult) {
+	attrs := []attribute.KeyValue{
+		attribute.String("check", hc.Name),
+	}
+	if hc.Group != "" {
+		attrs = append(attrs, attribute.String("group", hc.Group))
+	}
+	if hc.ComponentType != "" {
+		attrs = append(attrs, attribute.String("component_type", hc.ComponentType))
+	}
+	attrSet := metric.WithAttributes(attrs...)
 
-		// duration histogram
-		if hc.Duration > 0 {
-			r.checkHist.Record(ctx, float64(hc.Duration)/float64(time.Millisecond), attrSet)
-		}
+	r.checkGauge.Record(ctx, statusToInt64(hc.Status), attrSet)
 
-		// execution counter with status label
-		r.checkCount.Add(ctx, 1, metric.WithAttributes(
-			append(attrs, attribute.String("status", hc.Status.String()))...,
-		))
+	if hc.Duration > 0 {
+		r.checkHist.Record(ctx, float64(hc.Duration)/float64(time.Millisecond), attrSet)
+	}
+
+	r.checkCount.Add(ctx, 1, metric.WithAttributes(
+		append(attrs, attribute.String("status", hc.Status.String()))...,
+	))
+}
+
+// statusToInt64 converts a health status to its numeric OTel gauge value.
+func statusToInt64(s health.Status) int64 {
+	switch s {
+	case health.StatusHealthy:
+		return 2
+	case health.StatusDegraded:
+		return 1
+	default:
+		return 0
 	}
 }
 

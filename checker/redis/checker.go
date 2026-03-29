@@ -64,34 +64,14 @@ func (c *Checker) Check(ctx context.Context) *health.CheckResult {
 
 	reader := bufio.NewReader(conn)
 
-	// AUTH if password is set
 	if c.password != "" {
-		_, err = fmt.Fprintf(conn, "*2\r\n$4\r\nAUTH\r\n$%d\r\n%s\r\n", len(c.password), c.password)
-		if err != nil {
-			return unhealthy(c.name, start, fmt.Errorf("write AUTH: %w", err))
-		}
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			return unhealthy(c.name, start, fmt.Errorf("read AUTH response: %w", err))
-		}
-		if len(line) < 3 || line[0] != '+' {
-			return unhealthy(c.name, start, fmt.Errorf("AUTH failed: %s", line))
+		if err := c.authenticate(conn, reader); err != nil {
+			return unhealthy(c.name, start, err)
 		}
 	}
 
-	// PING
-	_, err = fmt.Fprint(conn, "*1\r\n$4\r\nPING\r\n")
-	if err != nil {
-		return unhealthy(c.name, start, fmt.Errorf("write PING: %w", err))
-	}
-
-	line, err := reader.ReadString('\n')
-	if err != nil {
-		return unhealthy(c.name, start, fmt.Errorf("read PING response: %w", err))
-	}
-
-	if len(line) < 5 || line[:5] != "+PONG" {
-		return unhealthy(c.name, start, fmt.Errorf("unexpected PING response: %s", line))
+	if err := c.ping(conn, reader); err != nil {
+		return unhealthy(c.name, start, err)
 	}
 
 	return &health.CheckResult{
@@ -100,6 +80,38 @@ func (c *Checker) Check(ctx context.Context) *health.CheckResult {
 		Duration:  time.Since(start),
 		Timestamp: start,
 	}
+}
+
+// authenticate sends AUTH and validates the response.
+func (c *Checker) authenticate(conn net.Conn, reader *bufio.Reader) error {
+	_, err := fmt.Fprintf(conn, "*2\r\n$4\r\nAUTH\r\n$%d\r\n%s\r\n", len(c.password), c.password)
+	if err != nil {
+		return fmt.Errorf("write AUTH: %w", err)
+	}
+	line, err := reader.ReadString('\n')
+	if err != nil {
+		return fmt.Errorf("read AUTH response: %w", err)
+	}
+	if len(line) < 3 || line[0] != '+' {
+		return fmt.Errorf("AUTH failed: %s", line)
+	}
+	return nil
+}
+
+// ping sends PING and validates the PONG response.
+func (c *Checker) ping(conn net.Conn, reader *bufio.Reader) error {
+	_, err := fmt.Fprint(conn, "*1\r\n$4\r\nPING\r\n")
+	if err != nil {
+		return fmt.Errorf("write PING: %w", err)
+	}
+	line, err := reader.ReadString('\n')
+	if err != nil {
+		return fmt.Errorf("read PING response: %w", err)
+	}
+	if len(line) < 5 || line[:5] != "+PONG" {
+		return fmt.Errorf("unexpected PING response: %s", line)
+	}
+	return nil
 }
 
 func unhealthy(name string, start time.Time, err error) *health.CheckResult {
