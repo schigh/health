@@ -1,3 +1,15 @@
+// Package health provides a health check framework for Go services.
+//
+// The framework is built around three interfaces: [Manager], [Checker], and [Reporter].
+// A Manager orchestrates health checks and dispatches results to reporters. Checkers
+// perform individual health checks against dependencies (databases, caches, HTTP
+// endpoints). Reporters expose health state to external observers (HTTP endpoints,
+// gRPC, Prometheus, OpenTelemetry).
+//
+// The core module has zero external dependencies. Reporters with heavy dependencies
+// (gRPC, OTel, Prometheus) are available as separate Go modules.
+//
+// See https://schigh.github.io/health/ for full documentation.
 package health
 
 import "context"
