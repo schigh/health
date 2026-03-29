@@ -3,7 +3,7 @@ module github.com/schigh/health/v2/reporter/grpc
 go 1.22.0
 
 require (
-	github.com/schigh/health/v2 v2.1.0
+	github.com/schigh/health/v2 v2.4.0
 	google.golang.org/grpc v1.69.4
 )
 
@@ -14,5 +14,3 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20241015192408-796eee8c2d53 // indirect
 	google.golang.org/protobuf v1.35.1 // indirect
 )
-
-replace github.com/schigh/health/v2 => ../..
