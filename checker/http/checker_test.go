@@ -80,6 +80,39 @@ func TestChecker_Timeout(t *testing.T) {
 	}
 }
 
+func TestChecker_WithMethod(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodHead {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := httpchecker.NewChecker("test", srv.URL, httpchecker.WithMethod(http.MethodHead))
+	result := c.Check(context.Background())
+
+	if result.Status != health.StatusHealthy {
+		t.Fatalf("expected healthy with HEAD, got %s (err: %v)", result.Status, result.Error)
+	}
+}
+
+func TestChecker_WithClient(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	custom := &http.Client{Timeout: 2 * time.Second}
+	c := httpchecker.NewChecker("test", srv.URL, httpchecker.WithClient(custom))
+	result := c.Check(context.Background())
+
+	if result.Status != health.StatusHealthy {
+		t.Fatalf("expected healthy with custom client, got %s (err: %v)", result.Status, result.Error)
+	}
+}
+
 func TestChecker_ContextCancelled(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)

@@ -127,3 +127,22 @@ func TestNoOpLogger(t *testing.T) {
 	l.Warn("test")
 	l.Error("test")
 }
+
+func TestWithDependsOn_Additive(t *testing.T) {
+	var opts health.AddCheckOptions
+	health.WithDependsOn("http://a")(&opts)
+	health.WithDependsOn("http://b")(&opts)
+	if len(opts.DependsOn) != 2 {
+		t.Fatalf("expected 2 deps after two calls, got %d", len(opts.DependsOn))
+	}
+}
+
+func TestCheckerFunc_NilResult(t *testing.T) {
+	cf := health.CheckerFunc(func(_ context.Context) *health.CheckResult {
+		return nil
+	})
+	result := cf.Check(context.Background())
+	if result != nil {
+		t.Error("expected nil result")
+	}
+}

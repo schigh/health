@@ -1,0 +1,3 @@
+ignore:
+  - "e2e/**"
+  - "examples/**"

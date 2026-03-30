@@ -2,6 +2,7 @@ package std_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -345,6 +346,134 @@ func TestManager_AddCheckWhileRunning(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "cannot add a health check to a running") {
 		t.Fatalf("expected error adding check while running, got: %v", err)
 	}
+
+	cancel()
+	_ = mgr.Stop(ctx)
+}
+
+func TestManager_AddReporterWhileRunning(t *testing.T) {
+	mgr := &std.Manager{}
+	rpt := &test.Reporter{}
+
+	_ = mgr.AddCheck("test", health.CheckerFunc(func(_ context.Context) *health.CheckResult {
+		return &health.CheckResult{Name: "test", Status: health.StatusHealthy}
+	}))
+	_ = mgr.AddReporter("test", rpt)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	_ = mgr.Run(ctx)
+
+	err := mgr.AddReporter("test2", &test.Reporter{})
+	if err == nil || !strings.Contains(err.Error(), "cannot add a reporter") {
+		t.Fatalf("expected error adding reporter while running, got: %v", err)
+	}
+
+	cancel()
+	_ = mgr.Stop(ctx)
+}
+
+func TestManager_PanickingChecker(t *testing.T) {
+	mgr := &std.Manager{}
+	rpt := &test.Reporter{}
+
+	_ = mgr.AddCheck("panicker", health.CheckerFunc(func(_ context.Context) *health.CheckResult {
+		panic("boom")
+	}))
+	_ = mgr.AddReporter("test", rpt)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	_ = mgr.Run(ctx)
+
+	waitFor(t, 2*time.Second, func() bool {
+		return rpt.Report().NumHealthCheckUpdates >= 1
+	})
+
+	report := rpt.Report()
+	hc := report.HealthChecks["panicker"]
+	if hc == nil {
+		t.Fatal("expected panicker health check result")
+	}
+	if hc.Status != health.StatusUnhealthy {
+		t.Errorf("expected unhealthy after panic, got %s", hc.Status)
+	}
+
+	cancel()
+	_ = mgr.Stop(ctx)
+}
+
+func TestManager_NilReturningChecker(t *testing.T) {
+	mgr := &std.Manager{}
+	rpt := &test.Reporter{}
+
+	var callCount atomic.Int32
+	_ = mgr.AddCheck("nil-checker", health.CheckerFunc(func(_ context.Context) *health.CheckResult {
+		if callCount.Add(1) == 1 {
+			return nil
+		}
+		return &health.CheckResult{Name: "nil-checker", Status: health.StatusHealthy}
+	}), health.WithCheckFrequency(health.CheckAtInterval, 50*time.Millisecond, 0))
+	_ = mgr.AddReporter("test", rpt)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	_ = mgr.Run(ctx)
+
+	// The first check returns nil (should be skipped), subsequent checks should succeed
+	waitFor(t, 2*time.Second, func() bool {
+		return rpt.Report().NumHealthCheckUpdates >= 1
+	})
+
+	cancel()
+	_ = mgr.Stop(ctx)
+}
+
+func TestManager_OneTimeCheckWithDelay(t *testing.T) {
+	mgr := &std.Manager{}
+	rpt := &test.Reporter{}
+
+	_ = mgr.AddCheck("delayed", health.CheckerFunc(func(_ context.Context) *health.CheckResult {
+		return &health.CheckResult{Name: "delayed", Status: health.StatusHealthy}
+	}), health.WithCheckFrequency(health.CheckOnce|health.CheckAfter, 0, 100*time.Millisecond))
+	_ = mgr.AddReporter("test", rpt)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	_ = mgr.Run(ctx)
+
+	waitFor(t, 2*time.Second, func() bool {
+		return rpt.Report().NumHealthCheckUpdates >= 1
+	})
+
+	cancel()
+	_ = mgr.Stop(ctx)
+}
+
+func TestManager_StopWhenNotRunning(t *testing.T) {
+	mgr := &std.Manager{}
+	// Stop without Run should be a no-op
+	err := mgr.Stop(context.Background())
+	if err != nil {
+		t.Fatalf("expected nil error from Stop when not running, got %v", err)
+	}
+}
+
+func TestManager_CheckWithErrorField(t *testing.T) {
+	mgr := &std.Manager{}
+	rpt := &test.Reporter{}
+
+	_ = mgr.AddCheck("errcheck", health.CheckerFunc(func(_ context.Context) *health.CheckResult {
+		return &health.CheckResult{
+			Name:   "errcheck",
+			Status: health.StatusUnhealthy,
+			Error:  errors.New("connection refused"),
+		}
+	}), health.WithReadinessImpact())
+	_ = mgr.AddReporter("test", rpt)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	_ = mgr.Run(ctx)
+
+	waitFor(t, 2*time.Second, func() bool {
+		return rpt.Report().NumHealthCheckUpdates >= 1
+	})
 
 	cancel()
 	_ = mgr.Stop(ctx)
