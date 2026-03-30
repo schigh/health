@@ -10,4 +10,4 @@ require (
 	github.com/schigh/health v0.0.0-00010101000000-000000000000
 )
 
-require google.golang.org/protobuf v1.32.0 // indirect
+require github.com/schigh/health/v2 v2.4.0 // indirect
