@@ -210,6 +210,150 @@ func TestGraph_Mermaid(t *testing.T) {
 	}
 }
 
+func TestDiscoverGraph_MaxDepth(t *testing.T) {
+	// backend that depends on itself (cycle), which would infinite loop without max depth
+	var backend *httptest.Server
+	backend = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != discovery.WellKnownPath {
+			http.NotFound(w, r)
+			return
+		}
+		m := discovery.Manifest{
+			Service: "backend",
+			Status:  "pass",
+			Checks: []discovery.CheckEntry{
+				{Name: "self", Status: "healthy", DependsOn: []string{backend.URL}},
+			},
+		}
+		json.NewEncoder(w).Encode(m)
+	}))
+	defer backend.Close()
+
+	g, err := discovery.DiscoverGraph(context.Background(), backend.URL,
+		discovery.WithMaxDepth(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// should have visited the node once (cycle detected via seen set)
+	if len(g.Nodes) != 1 {
+		t.Fatalf("expected 1 node, got %d", len(g.Nodes))
+	}
+}
+
+func TestFetchManifest_WithClient(t *testing.T) {
+	srv := serveManifest(discovery.Manifest{
+		Service: "api",
+		Status:  "pass",
+	})
+	defer srv.Close()
+
+	client := &http.Client{Timeout: 2 * time.Second}
+	m, err := discovery.FetchManifest(context.Background(), srv.URL,
+		discovery.WithClient(client))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Service != "api" {
+		t.Fatalf("expected service 'api', got %q", m.Service)
+	}
+}
+
+func TestFetchManifest_InvalidJSON(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != discovery.WellKnownPath {
+			http.NotFound(w, r)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("not json"))
+	}))
+	defer srv.Close()
+
+	_, err := discovery.FetchManifest(context.Background(), srv.URL)
+	if err == nil {
+		t.Fatal("expected error for invalid JSON")
+	}
+}
+
+func TestGraph_Mermaid_AllStatuses(t *testing.T) {
+	g := &discovery.Graph{
+		Root: "http://api:8080",
+		Nodes: map[string]*discovery.Node{
+			"http://api:8080": {
+				Service: "api",
+				URL:     "http://api:8080",
+				Status:  "pass",
+			},
+			"http://db:5432": {
+				Service: "database",
+				URL:     "http://db:5432",
+				Status:  "fail",
+			},
+			"http://cache:6379": {
+				Service: "cache",
+				URL:     "http://cache:6379",
+				Status:  "warn",
+			},
+			"http://unknown:9999": {
+				URL:    "http://unknown:9999",
+				Status: "unknown",
+			},
+		},
+	}
+
+	mermaid := g.Mermaid()
+	if !strings.Contains(mermaid, "#4caf50") {
+		t.Error("expected green for pass")
+	}
+	if !strings.Contains(mermaid, "#f44336") {
+		t.Error("expected red for fail")
+	}
+	if !strings.Contains(mermaid, "#ff9800") {
+		t.Error("expected orange for warn")
+	}
+	if !strings.Contains(mermaid, "#9e9e9e") {
+		t.Error("expected grey for unknown")
+	}
+	// node without service name should use URL as label
+	if !strings.Contains(mermaid, "http://unknown:9999") {
+		t.Error("expected URL as label for node without service name")
+	}
+}
+
+func TestGraph_DOT_AllStatuses(t *testing.T) {
+	g := &discovery.Graph{
+		Root: "http://api:8080",
+		Nodes: map[string]*discovery.Node{
+			"http://api:8080": {
+				Service:      "api",
+				URL:          "http://api:8080",
+				Status:       "pass",
+				Dependencies: []string{"http://db:5432"},
+			},
+			"http://db:5432": {
+				URL:    "http://db:5432",
+				Status: "warn",
+			},
+		},
+	}
+
+	dot := g.DOT()
+	if !strings.Contains(dot, "#4caf50") {
+		t.Error("expected green for pass")
+	}
+	if !strings.Contains(dot, "#ff9800") {
+		t.Error("expected orange for warn")
+	}
+	if !strings.Contains(dot, "->") {
+		t.Error("expected edge in DOT output")
+	}
+	// node without service should use URL as label
+	if !strings.Contains(dot, "http://db:5432") {
+		t.Error("expected URL as label for node without service name")
+	}
+}
+
 func TestGraph_DOT(t *testing.T) {
 	g := &discovery.Graph{
 		Root: "http://api:8080",
