@@ -1,4 +1,5 @@
 [![Test](https://github.com/schigh/health/actions/workflows/test.yaml/badge.svg)](https://github.com/schigh/health/actions/workflows/test.yaml)
+[![codecov](https://codecov.io/github/schigh/health/graph/badge.svg?token=LUYRVETK3N)](https://codecov.io/github/schigh/health)
 [![Go Report Card](https://goreportcard.com/badge/github.com/schigh/health/v2)](https://goreportcard.com/report/github.com/schigh/health/v2)
 [![Go Reference](https://pkg.go.dev/badge/github.com/schigh/health/v2.svg)](https://pkg.go.dev/github.com/schigh/health/v2)
 
