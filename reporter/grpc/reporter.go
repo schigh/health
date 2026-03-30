@@ -152,6 +152,26 @@ func (r *Reporter) Check(_ context.Context, req *grpc_health_v1.HealthCheckReque
 	return &grpc_health_v1.HealthCheckResponse{Status: status}, nil
 }
 
+// List implements grpc_health_v1.HealthServer and returns the status of all
+// known services.
+func (r *Reporter) List(_ context.Context, _ *grpc_health_v1.HealthListRequest) (*grpc_health_v1.HealthListResponse, error) {
+	r.hcMx.RLock()
+	defer r.hcMx.RUnlock()
+
+	statuses := make(map[string]*grpc_health_v1.HealthCheckResponse, len(r.hcs))
+	for name, hc := range r.hcs {
+		status := grpc_health_v1.HealthCheckResponse_SERVING
+		if hc.Status == health.StatusUnhealthy {
+			status = grpc_health_v1.HealthCheckResponse_NOT_SERVING
+		}
+		statuses[name] = &grpc_health_v1.HealthCheckResponse{
+			Status: status,
+		}
+	}
+
+	return &grpc_health_v1.HealthListResponse{Statuses: statuses}, nil
+}
+
 // Watch implements grpc_health_v1.HealthServer (streaming).
 // This is a minimal implementation that sends the current status and returns.
 func (r *Reporter) Watch(req *grpc_health_v1.HealthCheckRequest, stream grpc_health_v1.Health_WatchServer) error {
