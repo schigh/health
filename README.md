@@ -1,3 +1,7 @@
+[![Test](https://github.com/schigh/health/actions/workflows/test.yaml/badge.svg)](https://github.com/schigh/health/actions/workflows/test.yaml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/schigh/health/v2)](https://goreportcard.com/report/github.com/schigh/health/v2)
+[![Go Reference](https://pkg.go.dev/badge/github.com/schigh/health/v2.svg)](https://pkg.go.dev/github.com/schigh/health/v2)
+
 # health
 
 A zero-dependency health check library for Go services. Built for Kubernetes, useful everywhere.
