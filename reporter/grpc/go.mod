@@ -1,4 +1,4 @@
-module github.com/schigh/health/v2/reporter/grpc
+module github.com/schigh/health/reporter/grpc/v2
 
 go 1.25.0
 

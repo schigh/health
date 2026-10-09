@@ -53,7 +53,7 @@ func NewReporter(cfg Config) (*Reporter, error) {
 		return nil, errNoMeterProvider
 	}
 
-	meter := cfg.MeterProvider.Meter("github.com/schigh/health/v2/reporter/otel")
+	meter := cfg.MeterProvider.Meter("github.com/schigh/health/reporter/otel/v2")
 
 	checkGauge, err := meter.Int64Gauge("health.check.status",
 		metric.WithDescription("Health check status: 0=unhealthy, 1=degraded, 2=healthy"),

@@ -23,17 +23,21 @@ type Reporter struct {
 	hcMx    sync.RWMutex
 	hcs     map[string]*health.CheckResult
 	server  *grpc.Server
-	addr    string
-	logger  health.Logger
+	// ownsServer is true when NewReporter created server. Only then do Run
+	// and Stop serve and stop it.
+	ownsServer bool
+	addr       string
+	logger     health.Logger
 }
 
 // Config configures the gRPC health reporter.
 type Config struct {
-	// Server is an existing gRPC server to register on. If nil, a new
-	// server is created and managed by this reporter.
+	// Server is an existing gRPC server to register on. The caller owns it:
+	// Run does not serve it and Stop does not stop it. If nil, the reporter
+	// creates its own server, serves it on Addr in Run, and stops it in Stop.
 	Server *grpc.Server
-	// Addr is the listen address (e.g., "0.0.0.0:8182"). Required if
-	// Server is nil.
+	// Addr is the listen address (e.g., "0.0.0.0:8182") for the reporter's
+	// own server. Required if Server is nil; ignored otherwise.
 	Addr   string
 	Logger health.Logger
 }
@@ -51,14 +55,24 @@ func NewReporter(cfg Config) *Reporter {
 		r.server = cfg.Server
 	} else {
 		r.server = grpc.NewServer()
+		r.ownsServer = true
 	}
 	grpc_health_v1.RegisterHealthServer(r.server, r)
 	return r
 }
 
+// Run starts the reporter. If the reporter created its own server, Run
+// serves it on Addr; a caller-supplied server is left for the caller to serve.
 func (r *Reporter) Run(_ context.Context) error {
 	if !atomic.CompareAndSwapUint32(&r.running, 0, 1) {
 		return fmt.Errorf("health.reporter.grpc: already running")
+	}
+	if !r.ownsServer {
+		return nil
+	}
+	if r.addr == "" {
+		atomic.StoreUint32(&r.running, 0)
+		return fmt.Errorf("health.reporter.grpc: Addr is required when Server is nil")
 	}
 
 	ln, err := net.Listen("tcp", r.addr)
@@ -76,11 +90,15 @@ func (r *Reporter) Run(_ context.Context) error {
 	return nil
 }
 
+// Stop stops the reporter. It gracefully stops the server only if the
+// reporter created it.
 func (r *Reporter) Stop(_ context.Context) error {
 	if !atomic.CompareAndSwapUint32(&r.running, 1, 0) {
 		return nil
 	}
-	r.server.GracefulStop()
+	if r.ownsServer {
+		r.server.GracefulStop()
+	}
 	return nil
 }
 
