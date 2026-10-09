@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/schigh/health/v2"
-	healthprom "github.com/schigh/health/v2/reporter/prometheus"
+	healthprom "github.com/schigh/health/reporter/prometheus/v2"
 )
 
 func TestReporter_MetricsEndpoint(t *testing.T) {

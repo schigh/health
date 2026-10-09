@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- The `reporter/grpc`, `reporter/otel` and `reporter/prometheus` modules can be
+  fetched with `go get`. Their paths are now
+  `github.com/schigh/health/reporter/{grpc,otel,prometheus}/v2`, released with
+  tags `reporter/<name>/v2.x.y`. The old `github.com/schigh/health/v2/reporter/...`
+  paths never resolved.
+- `reporter/grpc`: with `Config.Server` set, `Run` no longer listens on `Addr`
+  and `Stop` no longer stops the server; the caller serves and stops it. With
+  no `Server`, `Run` returns an error if `Addr` is empty.
+
 ## [2.4.0.0] - 2026-03-28
 
 ### Added

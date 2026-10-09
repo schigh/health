@@ -1,4 +1,4 @@
-module github.com/schigh/health/v2/reporter/otel
+module github.com/schigh/health/reporter/otel/v2
 
 go 1.25.0
 

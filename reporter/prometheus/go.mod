@@ -1,4 +1,4 @@
-module github.com/schigh/health/v2/reporter/prometheus
+module github.com/schigh/health/reporter/prometheus/v2
 
 go 1.22.0
 

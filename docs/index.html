@@ -439,7 +439,7 @@ health.CheckerFunc(<span class="kw">func</span>(ctx context.Context) *health.Che
     <div class="reporter-card">
       <h3>gRPC <span class="badge badge-ext">separate module</span></h3>
       <p>Standard <code>grpc.health.v1.Health</code> protocol. Check + Watch.</p>
-      <pre><code><span class="cmt">// go get github.com/schigh/health/v2/reporter/grpc</span>
+      <pre><code><span class="cmt">// go get github.com/schigh/health/reporter/grpc/v2</span>
 reporter := grpc.NewReporter(grpc.Config{
     Addr: <span class="str">"0.0.0.0:8182"</span>,
 })</code></pre>
@@ -448,7 +448,7 @@ reporter := grpc.NewReporter(grpc.Config{
     <div class="reporter-card">
       <h3>OpenTelemetry <span class="badge badge-ext">separate module</span></h3>
       <p>Emits metrics via OTel API: check status, duration, executions, liveness/readiness/startup.</p>
-      <pre><code><span class="cmt">// go get github.com/schigh/health/v2/reporter/otel</span>
+      <pre><code><span class="cmt">// go get github.com/schigh/health/reporter/otel/v2</span>
 reporter, _ := otel.NewReporter(otel.Config{
     MeterProvider: provider,
 })</code></pre>
@@ -457,7 +457,7 @@ reporter, _ := otel.NewReporter(otel.Config{
     <div class="reporter-card">
       <h3>Prometheus <span class="badge badge-ext">separate module</span></h3>
       <p>Exposes metrics for Prometheus scraping. Configurable namespace.</p>
-      <pre><code><span class="cmt">// go get github.com/schigh/health/v2/reporter/prometheus</span>
+      <pre><code><span class="cmt">// go get github.com/schigh/health/reporter/prometheus/v2</span>
 reporter := prometheus.NewReporter(prometheus.Config{
     Namespace: <span class="str">"myapp"</span>,
 })
@@ -773,13 +773,13 @@ make e2e-teardown  <span class="cmt"># delete cluster</span></code></pre>
 go get github.com/schigh/health/v2
 
 <span class="cmt"># gRPC reporter</span>
-go get github.com/schigh/health/v2/reporter/grpc
+go get github.com/schigh/health/reporter/grpc/v2
 
 <span class="cmt"># OpenTelemetry reporter</span>
-go get github.com/schigh/health/v2/reporter/otel
+go get github.com/schigh/health/reporter/otel/v2
 
 <span class="cmt"># Prometheus reporter</span>
-go get github.com/schigh/health/v2/reporter/prometheus</code></pre>
+go get github.com/schigh/health/reporter/prometheus/v2</code></pre>
 
   <p>Requires Go 1.22+.</p>
 </section>

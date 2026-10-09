@@ -9,7 +9,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
 	"github.com/schigh/health/v2"
-	healthotel "github.com/schigh/health/v2/reporter/otel"
+	healthotel "github.com/schigh/health/reporter/otel/v2"
 )
 
 func setupReporter(t *testing.T) (*healthotel.Reporter, *metric.ManualReader) {

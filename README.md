@@ -185,7 +185,7 @@ curl "localhost:8181/livez?verbose&exclude=redis"  # exclude a check
 Implements the standard `grpc.health.v1.Health` protocol. Separate module to keep the core zero-dep.
 
 ```go
-go get github.com/schigh/health/v2/reporter/grpc
+go get github.com/schigh/health/reporter/grpc/v2
 ```
 
 ```go
@@ -194,12 +194,20 @@ reporter := grpc.NewReporter(grpc.Config{
 })
 ```
 
+To serve health on a gRPC server you already run, pass it as `Server`. The
+reporter registers on it, but `Run` does not serve it and `Stop` does not stop
+it; that stays with you:
+
+```go
+reporter := grpc.NewReporter(grpc.Config{Server: srv})
+```
+
 ### OpenTelemetry
 
 Emits health metrics via the OTel API. Separate module.
 
 ```
-go get github.com/schigh/health/v2/reporter/otel
+go get github.com/schigh/health/reporter/otel/v2
 ```
 
 ```go
@@ -215,7 +223,7 @@ Metrics: `health.check.status`, `health.check.duration`, `health.check.execution
 Exposes health metrics for Prometheus scraping. Separate module.
 
 ```
-go get github.com/schigh/health/v2/reporter/prometheus
+go get github.com/schigh/health/reporter/prometheus/v2
 ```
 
 ```go
